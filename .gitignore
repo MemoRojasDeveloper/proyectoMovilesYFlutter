@@ -1,0 +1,17 @@
+# Entorno virtual de Python
+venv/
+__pycache__/
+*.pyc
+
+# Archivo de configuración secreta
+.env
+
+# Archivos de base de datos o respaldos locales
+*.sql
+
+# Archivos temporales de VS Code o del sistema
+.vscode/
+.DS_Store
+
+# Nota: Flutter crea automáticamente su propio .gitignore dentro de la carpeta /frontend, 
+# así que las cosas pesadas de Flutter ya están protegidas por defecto.
