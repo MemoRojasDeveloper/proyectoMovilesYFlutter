@@ -88,7 +88,7 @@ def test_db():
     try:
         # Intentamos consultar la tabla Sucursal (aunque no tenga datos aún)
         Sucursal.query.first()
-        return {"status": "success", "mensaje": "¡Conexión a MySQL exitosa! Flask está hablando con Laragon."}
+        return {"status": "success", "mensaje": "¡Conexión a la base de datos exitosa!"}
     except Exception as e:
         return {"status": "error", "mensaje": f"Error de conexión: {str(e)}"}
 
