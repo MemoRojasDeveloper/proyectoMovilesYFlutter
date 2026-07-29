@@ -22,19 +22,9 @@ typing_extensions==4.16.0
 urllib3==2.7.0
 Werkzeug==3.1.8
 
-# --- Driver PostgreSQL (SOLO si usas Supabase) ---
-# Los tests usan SQLite y NO requieren este paquete.
-# Si tu Python es <= 3.12 puedes hacer: pip install psycopg2-binary
-# Si tienes Python 3.13/3.14 (sin wheels aún), instala PostgreSQL local
-# (https://www.postgresql.org/download/windows/) para tener pg_config, o
-# ejecuta: pip install psycopg2-binary --no-binary :all:
+psycopg2-binary==2.9.10; python_version < "3.13"
 
-# --- Dependencias de testing ---
 pytest==8.4.2
 pytest-flask==1.3.0
 pytest-mock==3.14.1
 pytest-cov==7.0.0
-
-# Crea tu entorno virtual con python -m venv venv y luego activa con venv\Scripts\activate
-# Instala todas las dependencias con pip install -r requirements.txt
-# Corre los tests con pytest -v (desde la raíz del proyecto)
