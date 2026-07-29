@@ -1,11 +1,10 @@
 """Importa todos los modelos para que SQLAlchemy los registre."""
-from .cliente import Cliente
+from .cliente import Cliente, ROLES_PERMITIDOS, ROL_POR_DEFECTO
 from .cuenta import CuentaCorriente
 from .domiciliacion import Domiciliacion
 from .prestamo import Prestamo
 from .privilegio import ClienteCuentaPrivilegio, Privilegio
 from .sucursal import Sucursal
-from .usuario import ROLES, Usuario, generar_hash, verificar_hash
 
 __all__ = [
     "Cliente",
@@ -14,9 +13,7 @@ __all__ = [
     "Domiciliacion",
     "Prestamo",
     "Privilegio",
-    "ROLES",
+    "ROLES_PERMITIDOS",
+    "ROL_POR_DEFECTO",
     "Sucursal",
-    "Usuario",
-    "generar_hash",
-    "verificar_hash",
 ]

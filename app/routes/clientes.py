@@ -1,58 +1,56 @@
+"""CRUD de clientes contra `public.cliente` en Supabase.
+
+La creación se hace desde `POST /api/auth/register` (que valida y
+hashea el password). Este blueprint solo expone consultas y
+actualizaciones sobre clientes ya registrados.
+"""
+from __future__ import annotations
+
 from flask import Blueprint, jsonify, request
+from sqlalchemy import func
 
 from ..extensions import db
 from ..models import Cliente
+from ..utils import require_auth
 
 bp = Blueprint("clientes", __name__)
 
 
-@bp.route("/clientes", methods=["POST", "GET"])
-def gestionar_clientes():
-    if request.method == "POST":
-        try:
-            data = request.get_json(silent=True) or {}
-            campos_requeridos = {"curp", "nombres", "apellido_paterno"}
-            faltantes = campos_requeridos - data.keys()
-            if faltantes:
-                return (
-                    jsonify(
-                        {"error": f"Campos faltantes: {', '.join(sorted(faltantes))}"}
-                    ),
-                    400,
-                )
-
-            # Si viene un `rol` en el JSON, lo aceptamos solo si está
-            # en la lista permitida. La creación masiva de empleados
-            # NO debe pasar por aquí (esos se hacen desde Supabase).
-            rol = data.get("rol", "cliente")
-            if rol not in ("cliente", "empleado"):
-                return (
-                    jsonify(
-                        {"error": f"Rol inválido: {rol!r}. Usa 'cliente' o 'empleado'."}
-                    ),
-                    400,
-                )
-
-            nuevo_cliente = Cliente(
-                curp=data["curp"],
-                nombres=data["nombres"],
-                apellido_paterno=data["apellido_paterno"],
-                apellido_materno=data.get("apellido_materno"),
-                email=data.get("email"),
-                telefono=data.get("telefono"),
-                rol=rol,
-            )
-            db.session.add(nuevo_cliente)
-            db.session.commit()
-            return jsonify({"mensaje": "Cliente registrado con éxito"}), 201
-        except Exception as exc:
-            db.session.rollback()
-            return jsonify({"error": str(exc)}), 400
-
-    # GET: filtra opcionalmente por rol.
+# GET /api/clientes
+# GET /api/clientes?rol=cliente|empleado
+@bp.route("/clientes", methods=["GET"])
+@require_auth()
+def listar_clientes():
     rol = request.args.get("rol")
+    q = Cliente.query
     if rol:
-        clientes = Cliente.query.filter_by(rol=rol).all()
-    else:
-        clientes = Cliente.query.all()
+        q = q.filter(Cliente.rol == rol)
+    clientes = q.order_by(Cliente.apellido_paterno).all()
     return jsonify([c.to_dict() for c in clientes]), 200
+
+
+# GET /api/clientes/<curp>
+@bp.route("/clientes/<string:curp>", methods=["GET"])
+@require_auth()
+def obtener_cliente(curp: str):
+    cliente = db.session.get(Cliente, curp.upper())
+    if cliente is None:
+        return jsonify({"error": "Cliente no encontrado"}), 404
+    return jsonify(cliente.to_dict(include_sensitive=True)), 200
+
+
+# GET /api/clientes/buscar?email=...
+@bp.route("/clientes/buscar", methods=["GET"])
+@require_auth()
+def buscar_por_email():
+    email = request.args.get("email", "").strip().lower()
+    if not email:
+        return jsonify({"error": "Falta parametro email"}), 400
+    cliente = (
+        db.session.query(Cliente)
+        .filter(func.lower(Cliente.email) == email)
+        .first()
+    )
+    if cliente is None:
+        return jsonify({"error": "Cliente no encontrado"}), 404
+    return jsonify(cliente.to_dict()), 200

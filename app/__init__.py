@@ -7,26 +7,12 @@ import stripe
 from flask import Flask, jsonify
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager
-from sqlalchemy import event
-from sqlalchemy.engine import Engine
 
 from .config import get_config
 from .extensions import db
 
 
 jwt = JWTManager()
-
-
-@event.listens_for(Engine, "connect")
-def _set_sqlite_pragma(dbapi_connection, connection_record):
-    """Activa las foreign keys en SQLite (que vienen deshabilitadas por defecto)."""
-    try:
-        cursor = dbapi_connection.cursor()
-        cursor.execute("PRAGMA foreign_keys=ON")
-        cursor.close()
-    except Exception:
-        # No es SQLite; no pasa nada
-        pass
 
 
 def create_app(config_name: str | None = None) -> Flask:
@@ -52,11 +38,23 @@ def create_app(config_name: str | None = None) -> Flask:
             "postgresql://", "postgresql+pg8000://", 1
         )
 
-    # Supabase requiere TLS en el puerto 5432.
+    # Guardarraíl: en development/production NO permitimos que la URL
+    # apunte a nada que no sea Supabase. Si alguien pone un SQLite
+    # local, fallamos ruidosamente en lugar de aceptarlo.
     final_uri = app.config.get("SQLALCHEMY_DATABASE_URI", "") or ""
+    is_testing = bool(app.config.get("TESTING"))
+    if not is_testing and not final_uri.startswith("postgresql"):
+        raise RuntimeError(
+            "DATABASE_URL debe apuntar a Supabase (postgresql://...). "
+            f"Valor actual: {final_uri!r}"
+        )
+
+    # Supabase (puerto 5432 o 6543 pooler) requiere TLS. pg8000 NO acepta
+    # `sslmode=require` en la URL; necesita `connect_args` aparte.
     if final_uri.startswith("postgresql+pg8000://") and "sslmode" not in final_uri:
-        sep = "&" if "?" in final_uri else "?"
-        app.config["SQLALCHEMY_DATABASE_URI"] = final_uri + f"{sep}sslmode=require"
+        app.config.setdefault("SQLALCHEMY_ENGINE_OPTIONS", {}).update({
+            "connect_args": {"ssl_context": True},
+        })
 
     # Inicializar extensiones
     db.init_app(app)
@@ -91,13 +89,9 @@ def create_app(config_name: str | None = None) -> Flask:
                 "mensaje": f"Error de conexión: {exc!s}",
             }
 
-    # Crear tablas en desarrollo (en producción usar migraciones)
-    with app.app_context():
-        if app.config.get("DEBUG") and not app.config.get("TESTING"):
-            try:
-                db.create_all()
-            except Exception:
-                # En Supabase el pooler no permite DDL; se ignora silenciosamente
-                pass
+    # NO crear tablas en arranque. El esquema vive en Supabase y se
+    # gestiona con migraciones SQL ejecutadas desde el panel.
+    # Si necesitas crear/alterar tablas, edita supabase/*.sql y
+    # ejecútalo desde SQL Editor de Supabase.
 
     return app

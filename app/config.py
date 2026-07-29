@@ -6,6 +6,18 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+def _missing_env(name: str) -> str:
+    """Helper para fallar ruidosamente si falta una variable de entorno."""
+    raise RuntimeError(
+        f"Falta la variable de entorno {name}. "
+        "Defínela en .env antes de arrancar la aplicación."
+    )
+
+
+# Alias para errores específicos de BD (mensaje más claro).
+_missing_db_url = _missing_env
+
+
 class Config:
     """Configuración base compartida."""
 
@@ -18,7 +30,12 @@ class Config:
 
 class DevelopmentConfig(Config):
     DEBUG = True
-    SQLALCHEMY_DATABASE_URI = os.getenv("DATABASE_URL")
+    # En desarrollo TODO debe ir contra Supabase. Si no hay DATABASE_URL,
+    # fallamos ruidosamente: NO usamos SQLite como fallback silencioso,
+    # porque eso es exactamente lo que rompió la integración con la nube.
+    SQLALCHEMY_DATABASE_URI = os.getenv("DATABASE_URL") or (
+        _missing_db_url("DATABASE_URL")
+    )
     JWT_SECRET_KEY = os.getenv(
         "JWT_SECRET_KEY",
         "dev-secret-cambia-en-produccion",  # noqa: S105 (placeholder dev)
@@ -42,8 +59,14 @@ class TestingConfig(Config):
 
 class ProductionConfig(Config):
     DEBUG = False
-    SQLALCHEMY_DATABASE_URI = os.getenv("DATABASE_URL")
-    JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY")  # requerido, sin default
+    # Producción exige DATABASE_URL real apuntando a Supabase.
+    # Si falta, falla al arrancar (no fallback a SQLite).
+    SQLALCHEMY_DATABASE_URI = os.getenv("DATABASE_URL") or (
+        _missing_db_url("DATABASE_URL")
+    )
+    JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY") or (
+        _missing_env("JWT_SECRET_KEY")
+    )
 
 
 CONFIG_MAP = {
