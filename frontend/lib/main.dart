@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'core/theme.dart';
 import 'features/auth/auth_repository.dart';
 import 'features/auth/login_screen.dart';
+import 'features/empleado/sucursales_empleado_screen.dart';
 import 'features/home/home_placeholder_screen.dart';
 
 Future<void> main() async {
@@ -91,16 +92,27 @@ class _BancoSantanderAppState extends State<BancoSantanderApp> {
       darkTheme: buildDarkTheme(),
       themeMode: widget.themeController.materialThemeMode,
       home: _hasSession && _currentUser != null
-          ? HomePlaceholderScreen(
-              user: _currentUser!,
-              repository: widget.authRepository,
-              onLogout: _onLogout,
-            )
+          ? _routerPostLogin(_currentUser!)
           : LoginScreen(
               repository: widget.authRepository,
               onSignedIn: _onSignedIn,
               themeController: widget.themeController,
             ),
+    );
+  }
+
+  Widget _routerPostLogin(AuthResult user) {
+    if (user.isEmpleado) {
+      return SucursalesEmpleadoScreen(
+        user: user,
+        onLogout: _onLogout,
+        themeController: widget.themeController,
+      );
+    }
+    return HomePlaceholderScreen(
+      user: user,
+      repository: widget.authRepository,
+      onLogout: _onLogout,
     );
   }
 }

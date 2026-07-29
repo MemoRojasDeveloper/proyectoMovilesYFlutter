@@ -117,7 +117,9 @@ def crear_sucursal():
         return _err(f"Ya existe la sucursal {normalizado['codigo_sucursal']}", 409)
 
     try:
-        nueva = Sucursal(**normalizado, activo=True)
+        # Si no vino 'activo' en el body, forzar True al crear.
+        normalizado.setdefault("activo", True)
+        nueva = Sucursal(**normalizado)
         db.session.add(nueva)
         db.session.commit()
     except Exception as exc:

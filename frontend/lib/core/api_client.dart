@@ -62,6 +62,47 @@ class ApiClient {
     );
   }
 
+  /// PUT con body JSON.
+  Future<dynamic> put(
+    String path, {
+    Object? body,
+    String? token,
+    Duration timeout = _defaultTimeout,
+  }) {
+    return _send(
+      'PUT',
+      path,
+      body: body ?? const <String, dynamic>{},
+      token: token,
+      timeout: timeout,
+    );
+  }
+
+  /// PATCH con body JSON.
+  Future<dynamic> patch(
+    String path, {
+    Object? body,
+    String? token,
+    Duration timeout = _defaultTimeout,
+  }) {
+    return _send(
+      'PATCH',
+      path,
+      body: body ?? const <String, dynamic>{},
+      token: token,
+      timeout: timeout,
+    );
+  }
+
+  /// DELETE sin body.
+  Future<dynamic> delete(
+    String path, {
+    String? token,
+    Duration timeout = _defaultTimeout,
+  }) {
+    return _send('DELETE', path, token: token, timeout: timeout);
+  }
+
   Future<dynamic> _send(
     String method,
     String path, {
@@ -91,6 +132,23 @@ class ApiClient {
                   body: body == null ? null : jsonEncode(body))
               .timeout(timeout);
           break;
+        case 'PUT':
+          response = await _client
+              .put(uri,
+                  headers: headers,
+                  body: body == null ? null : jsonEncode(body))
+              .timeout(timeout);
+          break;
+        case 'PATCH':
+          response = await _client
+              .patch(uri,
+                  headers: headers,
+                  body: body == null ? null : jsonEncode(body))
+              .timeout(timeout);
+          break;
+        case 'DELETE':
+          response = await _client.delete(uri, headers: headers).timeout(timeout);
+          break;
         default:
           throw ApiException(
             statusCode: 0,
@@ -112,9 +170,10 @@ class ApiClient {
     final int status = response.statusCode;
     final bool hasBody = response.body.isNotEmpty;
     Map<String, dynamic>? json;
+    dynamic decoded; // admitimos tanto Map como List en respuestas 2xx
     if (hasBody) {
       try {
-        final decoded = jsonDecode(response.body);
+        decoded = jsonDecode(response.body);
         if (decoded is Map<String, dynamic>) {
           json = decoded;
         }
@@ -124,7 +183,9 @@ class ApiClient {
     }
 
     if (status >= 200 && status < 300) {
-      return json;
+      // Devuelve lo decodificado tal cual: puede ser Map (objeto) o List (array).
+      // Si el body no era JSON válido, devolvemos el string crudo como fallback.
+      return decoded ?? (hasBody ? response.body : null);
     }
 
     final String message =
