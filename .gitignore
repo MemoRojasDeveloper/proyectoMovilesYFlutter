@@ -1,17 +1,142 @@
-# Entorno virtual de Python
+# ============================================================================
+#  Gitignore raíz — Sistema Bancario
+# ============================================================================
+#  Reglas intencionalmente globales para TODO el proyecto (backend Python
+#  + frontend Flutter). El frontend ya tiene su propio .gitignore dentro de
+#  /frontend, pero reforzar aquí evita filtraciones accidentales.
+# ============================================================================
+
+# ─── Entornos virtuales Python ─────────────────────────────────────────────
+.venv/
 venv/
+env/
+ENV/
+.python-version
+pip-wheel-metadata/
+
+# ─── Bytecode / cachés Python ──────────────────────────────────────────────
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+*.pdb
+*.egg-info/
+*.egg
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.tox/
 
-# Archivo de configuración secreta
+# ─── Cobertura y reportes ────────────────────────────────────────────────
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+junit*.xml
+
+# ─── Secretos y variables de entorno 
 .env
+.env.*
+!.env.example
 
-# Archivos de base de datos o respaldos locales
+# ─── Logs y datos sensibles 
+*.log
+*.log.*
+flask.log
+server.log
+*.sqlite
+*.sqlite3
+*.db
+
+# ─── Backups de bases de datos y dumps 
 *.sql
+!supabase/*.sql
 
-# Archivos temporales de VS Code o del sistema
-.vscode/
+# ─── Sistema operativo
 .DS_Store
+Thumbs.db
+Desktop.ini
+ehthumbs.db
+$RECYCLE.BIN/
 
-# Nota: Flutter crea automáticamente su propio .gitignore dentro de la carpeta /frontend, 
-# así que las cosas pesadas de Flutter ya están protegidas por defecto.
+# ─── IDEs y editores 
+.vscode/
+.idea/
+*.swp
+*.swo
+*.swn
+*~
+*.bak
+*.tmp
+*.orig
+*.rej
+
+# ─── Flutter / Dart (redundante con frontend/.gitignore pero a salvo) ─────
+frontend/.dart_tool/
+frontend/.flutter-plugins
+frontend/.flutter-plugins-dependencies
+frontend/.packages
+frontend/build/
+frontend/coverage/
+frontend/.idea/
+frontend/.vscode/
+frontend/app.*.symbols
+frontend/app.*.map.json
+frontend/**/doc/api/
+
+# ─── Android 
+frontend/android/.gradle/
+frontend/android/local.properties
+frontend/android/key.properties
+frontend/android/app/debug
+frontend/android/app/profile
+frontend/android/app/release
+frontend/android/.cxx/
+*.apk
+*.aab
+
+# ─── iOS
+frontend/ios/Flutter/.last_build_id
+frontend/ios/Flutter/Generated.xcconfig
+frontend/ios/Flutter/flutter_export_environment.sh
+frontend/ios/Pods/
+frontend/ios/.symlinks/
+frontend/ios/Runner.xcworkspace/xcuserdata/
+frontend/ios/Runner.xcodeproj/project.xcworkspace/xcuserdata/
+frontend/ios/Runner.xcodeproj/xcuserdata/
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# ─── macOS (target macOS de Flutter) 
+frontend/macos/Flutter/ephemeral/
+frontend/macos/Pods/
+frontend/macos/Runner.xcworkspace/xcuserdata/
+frontend/macos/Runner.xcodeproj/xcuserdata/
+
+# ─── Linux (target linux de Flutter) 
+frontend/linux/flutter/ephemeral/
+frontend/linux/build/
+
+# ─── Windows (target windows de Flutter) 
+frontend/windows/flutter/ephemeral/
+frontend/windows/build/
+
+# ─── Builds empaquetados del backend 
+*.whl
+*.tar.gz
+*.zip
+dist/
+build/
+backend/dist/
+backend/build/
+
+# ============================================================================
+#  NOTAS
+# ============================================================================
+#  - Flutter ya crea su propio .gitignore dentro de /frontend para la mayoría
+#    de esos archivos. Este .gitignore raíz funciona como red de seguridad.
+#  - Las carpetas que SÍ debes versionar (tests, scripts, configs) están
+#    permitidas por defecto; este archivo solo añade exclusiones.
+#  - Si añades nuevas herramientas (linters, formatters), agrégalas aquí.
+# ============================================================================
