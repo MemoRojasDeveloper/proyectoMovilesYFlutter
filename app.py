@@ -40,6 +40,7 @@ class Cliente(db.Model):
     apellido_materno = db.Column(db.String(100))
     email = db.Column(db.String(100), unique=True)
     telefono = db.Column(db.String(15))
+    rol = db.Column(db.String(20), default='cliente')
 
 class CuentaCorriente(db.Model):
     __tablename__ = 'cuenta_corriente'
