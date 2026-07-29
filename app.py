@@ -129,7 +129,8 @@ def gestionar_clientes():
                 "apellido_paterno": c.apellido_paterno,
                 "apellido_materno": c.apellido_materno,
                 "email": c.email,
-                "telefono": c.telefono
+                "telefono": c.telefono,
+                "rol": c.rol,
             })
         return jsonify(lista_clientes), 200
     
