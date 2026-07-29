@@ -35,6 +35,12 @@ dependencies:
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
 
+  # HTTP client para llamar al backend Flask (register / login / me).
+  http: ^1.2.2
+
+  # Persistencia ligera del JWT (compatible con Android, iOS, Web, desktop).
+  shared_preferences: ^2.3.2
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

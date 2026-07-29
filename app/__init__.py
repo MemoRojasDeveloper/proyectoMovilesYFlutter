@@ -5,6 +5,7 @@ import os
 
 import stripe
 from flask import Flask, jsonify
+from flask_cors import CORS
 from flask_jwt_extended import JWTManager
 from sqlalchemy import event
 from sqlalchemy.engine import Engine
@@ -33,6 +34,14 @@ def create_app(config_name: str | None = None) -> Flask:
 
     app = Flask(__name__)
     app.config.from_object(get_config(config_name))
+
+    # CORS: permite que Flutter Web / clientes en otros dominios
+    # consuman la API. En producción se ajustará al dominio real.
+    CORS(
+        app,
+        resources={r"/api/*": {"origins": "*"}},
+        supports_credentials=True,
+    )
 
     # Inicializar extensiones
     db.init_app(app)
