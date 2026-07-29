@@ -1,5 +1,8 @@
 from ..extensions import db
 
+ROLES_PERMITIDOS = ("cliente", "empleado")
+ROL_POR_DEFECTO = "cliente"
+
 
 class Cliente(db.Model):
     __tablename__ = "cliente"
@@ -11,6 +14,16 @@ class Cliente(db.Model):
     email = db.Column(db.String(100), unique=True)
     telefono = db.Column(db.String(15))
 
+    # Diferencia un cliente del banco de un usuario-administrador.
+    # Por defecto 'cliente'. Solo el alta manual en BD puede
+    # crear un 'empleado'.
+    rol = db.Column(
+        db.String(20),
+        nullable=False,
+        default=ROL_POR_DEFECTO,
+        server_default=ROL_POR_DEFECTO,
+    )
+
     def to_dict(self) -> dict:
         return {
             "curp": self.curp,
@@ -19,4 +32,9 @@ class Cliente(db.Model):
             "apellido_materno": self.apellido_materno,
             "email": self.email,
             "telefono": self.telefono,
+            "rol": self.rol,
         }
+
+    @property
+    def is_empleado(self) -> bool:
+        return self.rol == "empleado"

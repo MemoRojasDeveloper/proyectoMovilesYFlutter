@@ -21,6 +21,18 @@ def gestionar_clientes():
                     400,
                 )
 
+            # Si viene un `rol` en el JSON, lo aceptamos solo si está
+            # en la lista permitida. La creación masiva de empleados
+            # NO debe pasar por aquí (esos se hacen desde Supabase).
+            rol = data.get("rol", "cliente")
+            if rol not in ("cliente", "empleado"):
+                return (
+                    jsonify(
+                        {"error": f"Rol inválido: {rol!r}. Usa 'cliente' o 'empleado'."}
+                    ),
+                    400,
+                )
+
             nuevo_cliente = Cliente(
                 curp=data["curp"],
                 nombres=data["nombres"],
@@ -28,6 +40,7 @@ def gestionar_clientes():
                 apellido_materno=data.get("apellido_materno"),
                 email=data.get("email"),
                 telefono=data.get("telefono"),
+                rol=rol,
             )
             db.session.add(nuevo_cliente)
             db.session.commit()
@@ -36,5 +49,10 @@ def gestionar_clientes():
             db.session.rollback()
             return jsonify({"error": str(exc)}), 400
 
-    clientes = Cliente.query.all()
+    # GET: filtra opcionalmente por rol.
+    rol = request.args.get("rol")
+    if rol:
+        clientes = Cliente.query.filter_by(rol=rol).all()
+    else:
+        clientes = Cliente.query.all()
     return jsonify([c.to_dict() for c in clientes]), 200

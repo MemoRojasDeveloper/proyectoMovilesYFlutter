@@ -73,6 +73,77 @@ def test_crear_cliente_sin_body_json(client):
     assert r.status_code == 400
 
 
+def test_crear_cliente_rol_default_es_cliente(client):
+    payload = {
+        "curp": "PEPJ800101HDFRPC01",
+        "nombres": "X",
+        "apellido_paterno": "Y",
+    }
+    r = client.post("/api/clientes", json=payload)
+    assert r.status_code == 201
+    listado = client.get("/api/clientes").get_json()
+    assert listado[0]["rol"] == "cliente"
+
+
+def test_crear_cliente_rol_empleado(client):
+    payload = {
+        "curp": "ADMN000000HDFAB001",
+        "nombres": "Patricia",
+        "apellido_paterno": "Hernandez",
+        "email": "admin@banco.local",
+        "rol": "empleado",
+    }
+    r = client.post("/api/clientes", json=payload)
+    assert r.status_code == 201
+    listado = client.get("/api/clientes?rol=empleado").get_json()
+    assert len(listado) == 1
+    assert listado[0]["rol"] == "empleado"
+
+
+def test_crear_cliente_rol_invalido_rechazado(client):
+    payload = {
+        "curp": "INVLD000000HDFAB001",
+        "nombres": "X",
+        "apellido_paterno": "Y",
+        "rol": "superadmin",
+    }
+    r = client.post("/api/clientes", json=payload)
+    assert r.status_code == 400
+    assert "Rol inválido" in r.get_json()["error"]
+
+
+def test_listar_clientes_filtra_por_rol(client, app):
+    """Crea 2 clientes (uno admin vía endpoint, otro via factory) y filtra."""
+    # Cliente normal
+    r1 = client.post("/api/clientes", json={
+        "curp": "CLI0000000HDFAB001",
+        "nombres": "Cliente",
+        "apellido_paterno": "Banco",
+        "email": "c@x.com",
+    })
+    assert r1.status_code == 201
+
+    # Empleado (admin)
+    r2 = client.post("/api/clientes", json={
+        "curp": "EMP0000000HDFAB001",
+        "nombres": "Admin",
+        "apellido_paterno": "Banco",
+        "email": "admin@banco.local",
+        "rol": "empleado",
+    })
+    assert r2.status_code == 201
+
+    # Filtro solo empleados
+    listado = client.get("/api/clientes?rol=empleado").get_json()
+    assert len(listado) == 1
+    assert listado[0]["curp"] == "EMP0000000HDFAB001"
+    assert listado[0]["rol"] == "empleado"
+
+    # Sin filtro, ambos
+    todos = client.get("/api/clientes").get_json()
+    assert len(todos) == 2
+
+
 def test_email_duplicado_es_rechazado(client, cliente_factory):
     cliente_factory(curp="AAA000000HDFXXX00", email="dupo@x.com")
     payload = {

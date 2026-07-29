@@ -106,18 +106,32 @@ Deberías ver:
 
 #### Orden de migrations
 
-Por ahora solo hay una, pero el prefijo numérico (`01_`) indica el orden:
+Los archivos en `supabase/` llevan un prefijo numérico que indica el orden.
+**Ejecuta en orden, de menor a mayor**:
 
 ```
 supabase/
-└── 01_create_usuario.sql    # ← ejecuta primero
-├── 02_xxx.sql               # ← siguiente (cuando exista)
-└── ...
+├── 01_create_usuario.sql    # crea tabla `usuario` (login + bcrypt)
+└── 02_add_rol_to_cliente.sql   # añade columna `rol` a `cliente`
 ```
 
+**Antes** solo existía `01_*`. Ahora hay dos — ejecuta ambos una vez por
+entorno nuevo. Si ya tienes `01_*` corriendo, aplica `02_*` y listo.
+
 > Antes no había convención de migrations: el SQL del banco lo pedías al admin.
-> Ahora `supabase/01_*` es la fuente de verdad del esquema y vive en el repo.
+> Ahora `supabase/*.sql` es la fuente de verdad del esquema y vive en el repo.
 > Los dumps de datos (`banco_santander.sql`) **siguen fuera** del repo por seguridad.
+
+#### Asignar rol de empleado a un cliente existente
+
+```sql
+UPDATE public.cliente
+SET rol = 'empleado'
+WHERE curp = 'LOAJ900215HDFRPC08';  -- CURP del admin que vas a usar
+```
+
+Esto te permite promover un cliente normal a admin para dar de alta
+sucursales desde el panel. La BD mantiene el CHECK `('cliente', 'empleado')`.
 
 #### Si algo falla al correrlas
 

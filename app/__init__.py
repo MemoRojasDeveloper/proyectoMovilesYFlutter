@@ -43,6 +43,21 @@ def create_app(config_name: str | None = None) -> Flask:
         supports_credentials=True,
     )
 
+    # Si la DATABASE_URL apunta a postgresql sin driver explícito
+    # y `pg8000` está instalado, lo añadimos al esquema de la URL.
+    # Esto evita tener que editar `.env` para elegir driver.
+    url = app.config.get("SQLALCHEMY_DATABASE_URI", "") or ""
+    if url.startswith("postgresql://") and "+" not in url:
+        app.config["SQLALCHEMY_DATABASE_URI"] = url.replace(
+            "postgresql://", "postgresql+pg8000://", 1
+        )
+
+    # Supabase requiere TLS en el puerto 5432.
+    final_uri = app.config.get("SQLALCHEMY_DATABASE_URI", "") or ""
+    if final_uri.startswith("postgresql+pg8000://") and "sslmode" not in final_uri:
+        sep = "&" if "?" in final_uri else "?"
+        app.config["SQLALCHEMY_DATABASE_URI"] = final_uri + f"{sep}sslmode=require"
+
     # Inicializar extensiones
     db.init_app(app)
     jwt.init_app(app)
