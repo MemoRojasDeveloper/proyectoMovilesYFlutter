@@ -40,7 +40,18 @@ class _BancoSantanderAppState extends State<BancoSantanderApp> {
   @override
   void initState() {
     super.initState();
+    widget.themeController.addListener(_onThemeChanged);
     _checkSession();
+  }
+
+  @override
+  void dispose() {
+    widget.themeController.removeListener(_onThemeChanged);
+    super.dispose();
+  }
+
+  void _onThemeChanged() {
+    if (mounted) setState(() {});
   }
 
   Future<void> _checkSession() async {

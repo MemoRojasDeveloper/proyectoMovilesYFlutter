@@ -276,19 +276,40 @@ class ThemeController extends ChangeNotifier {
   }
 }
 
-/// IconButton lista para poner en cualquier AppBar que cambie el tema al
-/// pulsar. Cicla por los 3 modos.
-class ThemeToggleButton extends StatelessWidget {
+/// `IconButton` que se suscribe al `ChangeNotifier` del `ThemeController`
+/// y rebuilds cuando cambia el modo. Cicla por los 3 modos al pulsar.
+class ThemeToggleButton extends StatefulWidget {
   const ThemeToggleButton({super.key, required this.controller});
 
   final ThemeController controller;
 
   @override
+  State<ThemeToggleButton> createState() => _ThemeToggleButtonState();
+}
+
+class _ThemeToggleButtonState extends State<ThemeToggleButton> {
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.addListener(_onChange);
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_onChange);
+    super.dispose();
+  }
+
+  void _onChange() {
+    if (mounted) setState(() {});
+  }
+
+  @override
   Widget build(BuildContext context) {
     return IconButton(
-      tooltip: controller.mode.label,
-      icon: Icon(controller.mode.icon),
-      onPressed: controller.cycle,
+      tooltip: widget.controller.mode.label,
+      icon: Icon(widget.controller.mode.icon),
+      onPressed: widget.controller.cycle,
     );
   }
 }
