@@ -97,9 +97,18 @@ class SucursalesRepository {
     return t;
   }
 
+  /// Devuelve el token si existe, o null si no (sin lanzar excepcion).
+  Future<String?> _tokenOpt() async {
+    final t = await _storage.token;
+    if (t == null || t.isEmpty) return null;
+    return t;
+  }
+
   Future<List<Sucursal>> listar({bool? activo}) async {
-    final token = await _token();
+    // Solo exigimos token cuando NO hay filtro de 'activo'.
+    // '?activo=true' es publico (necesario para el registro).
     final qs = activo == null ? '' : '?activo=${activo ? 'true' : 'false'}';
+    final token = activo == null ? await _token() : await _tokenOpt();
     final res = await _api.get('/api/sucursales$qs', token: token);
     if (res is! List) {
       throw ServerApiException();
@@ -108,6 +117,28 @@ class SucursalesRepository {
         .whereType<Map<String, dynamic>>()
         .map(Sucursal.fromJson)
         .toList();
+  }
+
+  /// GET /api/sucursales/<codigo>/cuentas
+  Future<CuentasSucursalResponse> obtenerCuentas(String codigo) async {
+    final token = await _token();
+    final res = await _api.get(
+      '/api/sucursales/${codigo.toUpperCase()}/cuentas',
+      token: token,
+    );
+    if (res is! Map<String, dynamic>) {
+      throw ServerApiException();
+    }
+    final cuentas = (res['cuentas'] as List? ?? const [])
+        .whereType<Map<String, dynamic>>()
+        .map(CuentaCorriente.fromJson)
+        .toList();
+    return CuentasSucursalResponse(
+      codigoSucursal: res['codigo_sucursal'] as String,
+      totalCuentas: res['total_cuentas'] as int? ?? cuentas.length,
+      totalClientes: res['total_clientes'] as int? ?? 0,
+      cuentas: cuentas,
+    );
   }
 
   Future<Sucursal> obtener(String codigo) async {
@@ -172,4 +203,54 @@ class SucursalesRepository {
     }
     return Sucursal.fromJson(res);
   }
+}
+
+/// Cuenta corriente basica (modelo para vista).
+class CuentaCorriente {
+  const CuentaCorriente({
+    required this.codigoCuenta,
+    required this.codigoSucursal,
+    required this.saldo,
+    this.fechaApertura,
+  });
+
+  final String codigoCuenta;
+  final String codigoSucursal;
+  final double saldo;
+  final DateTime? fechaApertura;
+
+  factory CuentaCorriente.fromJson(Map<String, dynamic> json) {
+    double parseSaldo(Object? v) {
+      if (v is num) return v.toDouble();
+      if (v is String) return double.tryParse(v) ?? 0;
+      return 0;
+    }
+
+    DateTime? parseDate(Object? v) {
+      if (v is String && v.isNotEmpty) return DateTime.tryParse(v);
+      return null;
+    }
+
+    return CuentaCorriente(
+      codigoCuenta: json['codigo_cuenta'] as String,
+      codigoSucursal: json['codigo_sucursal'] as String,
+      saldo: parseSaldo(json['saldo']),
+      fechaApertura: parseDate(json['fecha_apertura']),
+    );
+  }
+}
+
+/// Respuesta de `GET /api/sucursales/<codigo>/cuentas`.
+class CuentasSucursalResponse {
+  const CuentasSucursalResponse({
+    required this.codigoSucursal,
+    required this.totalCuentas,
+    required this.totalClientes,
+    required this.cuentas,
+  });
+
+  final String codigoSucursal;
+  final int totalCuentas;
+  final int totalClientes;
+  final List<CuentaCorriente> cuentas;
 }

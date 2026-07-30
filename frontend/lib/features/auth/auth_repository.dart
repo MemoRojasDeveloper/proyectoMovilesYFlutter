@@ -35,6 +35,7 @@ class AuthRepository {
     required String email,
     String? telefono,
     required String password,
+    required String codigoSucursal,
   }) async {
     final body = {
       'curp': curp,
@@ -45,6 +46,7 @@ class AuthRepository {
       'email': email,
       if (telefono != null && telefono.isNotEmpty) 'telefono': telefono,
       'password': password,
+      'codigo_sucursal': codigoSucursal,
     };
 
     final response = await _api.post('/api/auth/register', body: body);

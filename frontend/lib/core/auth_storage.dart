@@ -59,4 +59,30 @@ class AuthStorage {
     await prefs.remove(_keyCurp);
     await prefs.remove(_keyEmail);
   }
+
+  /// Devuelve una instancia "anonima" (sin token) para llamadas publicas.
+  /// Todos los getters devuelven null.
+  static AuthStorage anonymous() => _EmptyAuthStorage();
+}
+
+class _EmptyAuthStorage implements AuthStorage {
+  @override
+  Future<String?> get token async => null;
+  @override
+  Future<String?> get rol async => null;
+  @override
+  Future<String?> get curp async => null;
+  @override
+  Future<String?> get email async => null;
+  @override
+  Future<bool> get isLoggedIn async => false;
+  @override
+  Future<void> save({
+    required String token,
+    required String rol,
+    String? curp,
+    String? email,
+  }) async {}
+  @override
+  Future<void> clear() async {}
 }

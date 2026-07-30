@@ -48,7 +48,11 @@ TELEFONO_REGEX = re.compile(r"^(\+?52\s?)?\d{10}$")
 
 PASSWORD_REGEX = re.compile(r"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$")
 
-NOMBRE_REGEX = re.compile(r"^[A-Za-zÁÉÍÓÚáéíóúÑñÜü' -]{2,100}$")
+# Nombre / apellido: letras Unicode (incluye acentos y ñ), espacios,
+# apóstrofes y guiones. Mínimo 2 caracteres.
+NOMBRE_REGEX = re.compile(
+    r"^[A-Za-zÁÉÍÓÚáéíóúÑñÜü][A-Za-zÁÉÍÓÚáéíóúÑñÜü' -]{1,99}$"
+)
 
 
 # ─────────────────────────────────────────────────────────────────────

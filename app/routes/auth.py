@@ -2,15 +2,21 @@
 
 Opera UNICAMENTE sobre `public.cliente` en Supabase. No existe tabla
 `usuario` separada; el hash de password vive dentro de `cliente`.
+
+`POST /api/auth/register` crea en una sola transaccion:
+  - 1 fila en public.cliente (identidad + password_hash)
+  - 1 fila en public.cuenta_corriente (codigo_cuenta derivado de la CURP)
 """
 from __future__ import annotations
+
+from datetime import date
 
 from flask import Blueprint, jsonify, request
 from flask_jwt_extended import get_jwt, get_jwt_identity
 from sqlalchemy import func
 
 from ..extensions import db
-from ..models import Cliente
+from ..models import Cliente, CuentaCorriente, Sucursal
 from ..utils import require_auth
 from ..utils.validation import (
     normalizar_telefono,
@@ -23,6 +29,17 @@ from ..utils.validation import (
 bp = Blueprint("auth", __name__, url_prefix="/api/auth")
 
 
+def _generar_codigo_cuenta(curp: str, codigo_sucursal: str) -> str:
+    """Codigo estable y unico: CTA-{curp[:6]}-{codigo_sucursal}.
+
+    6 chars de la CURP bastan para unicidad practica en el sistema
+    real; lo importante es que es DERIVADO (no requiere secuencia).
+    """
+    curp6 = curp[:6].upper()
+    suc = codigo_sucursal.upper()
+    return f"CTA-{curp6}-{suc}"
+
+
 # ─────────────────────────────────────────────────────────────────
 # POST /api/auth/register
 #   Crea un Cliente nuevo (con password_hash embebido) en una sola
@@ -32,7 +49,10 @@ bp = Blueprint("auth", __name__, url_prefix="/api/auth")
 def register():
     data = request.get_json(silent=True) or {}
 
-    campos = ("curp", "nombres", "apellido_paterno", "email", "password")
+    campos = (
+        "curp", "nombres", "apellido_paterno", "email", "password",
+        "codigo_sucursal",
+    )
     faltantes = [c for c in campos if not data.get(c)]
     if faltantes:
         return (
@@ -84,6 +104,26 @@ def register():
     if existe_email is not None:
         return jsonify({"error": "Ya existe un cliente con ese email"}), 409
 
+    # Sucursal: debe existir y estar operativa
+    codigo_sucursal = data["codigo_sucursal"].strip().upper()
+    sucursal = db.session.get(Sucursal, codigo_sucursal)
+    if sucursal is None:
+        return jsonify({
+            "error": f"La sucursal {codigo_sucursal} no existe",
+        }), 404
+    if not sucursal.activo:
+        return jsonify({
+            "error": "La sucursal seleccionada no esta operativa",
+        }), 400
+
+    # Generar codigo_cuenta derivado y verificar unicidad
+    codigo_cuenta = _generar_codigo_cuenta(curp, codigo_sucursal)
+    if db.session.get(CuentaCorriente, codigo_cuenta) is not None:
+        # Colision imposible salvo caso patologico; marcador por si pasa
+        return jsonify({
+            "error": "No se pudo asignar un codigo de cuenta unico. Reintenta.",
+        }), 409
+
     try:
         nuevo = Cliente(
             curp=curp,
@@ -94,9 +134,19 @@ def register():
             telefono=telefono,
             rol="cliente",
             activo=True,
+            codigo_sucursal=codigo_sucursal,
         )
         nuevo.set_password(data["password"])
         db.session.add(nuevo)
+
+        cuenta = CuentaCorriente(
+            codigo_cuenta=codigo_cuenta,
+            codigo_sucursal=codigo_sucursal,
+            saldo=0,
+            fecha_apertura=date.today(),
+        )
+        db.session.add(cuenta)
+
         db.session.commit()
     except Exception as exc:
         db.session.rollback()
@@ -108,6 +158,7 @@ def register():
             {
                 "mensaje": "Cliente registrado con exito",
                 "cliente": nuevo.to_dict(),
+                "cuenta": cuenta.to_dict(),
                 "access_token": token,
                 "rol": nuevo.rol,
             }

@@ -17,7 +17,7 @@ from flask import Blueprint, jsonify, request
 from sqlalchemy import func
 
 from ..extensions import db
-from ..models import Sucursal
+from ..models import Cliente, CuentaCorriente, Sucursal
 from ..utils import require_auth
 
 bp = Blueprint("sucursales", __name__)
@@ -90,16 +90,30 @@ def _validar_payload(data: dict, *, es_creacion: bool) -> tuple[dict, dict | Non
 # ── Endpoints ──────────────────────────────────────────────────────
 
 # GET /api/sucursales   GET /api/sucursales?activo=true|false
+#
+# Lectura publica: cualquiera (incluso antes del login) puede listar
+# las sucursales activas para escoger una al registrarse. Si quieres
+# ver TODAS (incluyendo inactivas), la llamada debe llevar JWT.
 @bp.route("/sucursales", methods=["GET"])
-@require_auth()
 def listar_sucursales():
-    q = Sucursal.query
     flag = request.args.get("activo")
-    if flag is not None:
+    # Si el caller no especifica 'activo', exigimos token para evitar
+    # exponer la lista completa.
+    if flag is None:
+        from flask_jwt_extended import verify_jwt_in_request
+        try:
+            verify_jwt_in_request()
+        except Exception:
+            return _err("Autenticacion requerida para listar todas las sucursales", 401)
+        q = Sucursal.query
+    else:
+        quiere = None
         if flag.lower() in ("true", "1", "si", "yes"):
-            q = q.filter(Sucursal.activo.is_(True))
+            quiere = True
         elif flag.lower() in ("false", "0", "no"):
-            q = q.filter(Sucursal.activo.is_(False))
+            quiere = False
+        q = Sucursal.query.filter(Sucursal.activo == quiere)
+
     sucursales = q.order_by(Sucursal.nombre_sucursal).all()
     return jsonify([s.to_dict() for s in sucursales]), 200
 
@@ -137,6 +151,36 @@ def obtener_sucursal(codigo: str):
     if suc is None:
         return _err("Sucursal no encontrada", 404)
     return jsonify(suc.to_dict()), 200
+
+
+# GET /api/sucursales/<codigo>/cuentas
+# Lista las cuentas corrientes asociadas a esta sucursal
+# (para mostrar en el dashboard de detalle).
+@bp.route("/sucursales/<string:codigo>/cuentas", methods=["GET"])
+@require_auth()
+def listar_cuentas_sucursal(codigo: str):
+    codigo_up = codigo.upper()
+    suc = db.session.get(Sucursal, codigo_up)
+    if suc is None:
+        return _err("Sucursal no encontrada", 404)
+
+    cuentas = (
+        db.session.query(CuentaCorriente)
+        .filter(CuentaCorriente.codigo_sucursal == codigo_up)
+        .order_by(CuentaCorriente.codigo_cuenta)
+        .all()
+    )
+    clientes_count = (
+        db.session.query(func.count(Cliente.curp))
+        .filter(Cliente.codigo_sucursal == codigo_up)
+        .scalar()
+    )
+    return jsonify({
+        "codigo_sucursal": codigo_up,
+        "total_cuentas": len(cuentas),
+        "total_clientes": clientes_count,
+        "cuentas": [c.to_dict() for c in cuentas],
+    }), 200
 
 
 # PUT /api/sucursales/<codigo>
@@ -184,6 +228,29 @@ def toggle_activo(codigo: str):
     data = request.get_json(silent=True) or {}
     if "activo" not in data or not isinstance(data["activo"], bool):
         return _err("Falta 'activo' (booleano) en el body", 400)
+
+    # Bloquear desactivacion si tiene clientes o cuentas asociadas.
+    if data["activo"] is False and suc.activo is True:
+        cuentas_count = (
+            db.session.query(func.count(CuentaCorriente.codigo_cuenta))
+            .filter(CuentaCorriente.codigo_sucursal == suc.codigo_sucursal)
+            .scalar()
+        )
+        clientes_count = (
+            db.session.query(func.count(Cliente.curp))
+            .filter(Cliente.codigo_sucursal == suc.codigo_sucursal)
+            .scalar()
+        )
+        if (cuentas_count or 0) + (clientes_count or 0) > 0:
+            return jsonify({
+                "error": (
+                    "No se puede desactivar la sucursal: tiene "
+                    f"{cuentas_count} cuenta(s) y {clientes_count} "
+                    "cliente(s) asociados."
+                ),
+                "cuentas_asociadas": int(cuentas_count or 0),
+                "clientes_asociados": int(clientes_count or 0),
+            }), 409
 
     try:
         suc.activo = data["activo"]

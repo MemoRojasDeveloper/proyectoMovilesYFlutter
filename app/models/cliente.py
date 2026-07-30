@@ -45,6 +45,18 @@ class Cliente(db.Model):
         server_default=ROL_POR_DEFECTO,
     )
 
+    # Sucursal a la que pertenece el cliente (su 'sucursal casa').
+    # NULL permitido para registros antiguos (sin FK al alta).
+    codigo_sucursal = db.Column(
+        db.String(20),
+        db.ForeignKey(
+            "sucursal.codigo_sucursal",
+            ondelete="RESTRICT",
+            onupdate="CASCADE",
+        ),
+        nullable=True,
+    )
+
     # ── password ───────────────────────────────────────────────
     def set_password(self, password_plano: str) -> None:
         crudo = password_plano.encode("utf-8")[:72]
@@ -93,6 +105,7 @@ class Cliente(db.Model):
             "telefono": self.telefono,
             "rol": self.rol,
             "activo": self.activo,
+            "codigo_sucursal": self.codigo_sucursal,
         }
         if include_sensitive:
             data["creado_en"] = (

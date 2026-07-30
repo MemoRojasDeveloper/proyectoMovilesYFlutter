@@ -1,13 +1,17 @@
 /// Pantalla de registro de cliente.
 ///
-/// Crea cliente + credencial en una sola transacción (backend).
+/// Crea cliente + credencial + cuenta_corriente en una sola
+/// transacción (backend). El usuario escoge la sucursal 'casa' en
+/// un dropdown que se alimenta de /api/sucursales?activo=true.
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/api_exception.dart';
+import '../../core/auth_storage.dart';
 import '../../core/theme.dart';
 import '../../core/validators.dart';
 import '../../widgets/bank_header.dart';
+import '../empleado/sucursales_repository.dart';
 import 'auth_repository.dart';
 
 class RegisterScreen extends StatefulWidget {
@@ -43,6 +47,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
   bool _loading = false;
   String? _serverError;
 
+  /// Estado del selector de sucursal
+  List<Sucursal> _sucursalesDisponibles = [];
+  bool _cargandoSucursales = false;
+  String? _sucursalSeleccionadaCodigo;
+  String? _errorSucursales;
+
   @override
   void dispose() {
     _curpCtrl.dispose();
@@ -56,6 +66,64 @@ class _RegisterScreenState extends State<RegisterScreen> {
     super.dispose();
   }
 
+  @override
+  void initState() {
+    super.initState();
+    _cargarSucursales();
+  }
+
+  Future<void> _cargarSucursales() async {
+    setState(() {
+      _cargandoSucursales = true;
+      _errorSucursales = null;
+    });
+    final repo = SucursalesRepository();
+    try {
+      final list = await repo.listar(activo: true);
+      if (!mounted) return;
+      setState(() {
+        _sucursalesDisponibles = list;
+        _cargandoSucursales = false;
+      });
+      return;
+    } on UnauthorizedApiException {
+      // El backend devolvio 401 (token expirado o invalido en
+      // SharedPreferences). Limpiamos el storage y reintentamos
+      // SIN token (el endpoint con ?activo=true es publico).
+      try {
+        await AuthStorage().clear();
+      } catch (_) {}
+    } catch (_) {
+      // Cualquier otro error cae al fallback final.
+    }
+
+    // Reintento sin token (o si fallo algo mas).
+    try {
+      // Forzamos peticion sin token mediante un repo con storage vacio.
+      final repoSinSesion = SucursalesRepository(
+        storage: AuthStorage.anonymous(),
+      );
+      final list = await repoSinSesion.listar(activo: true);
+      if (!mounted) return;
+      setState(() {
+        _sucursalesDisponibles = list;
+        _cargandoSucursales = false;
+      });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _cargandoSucursales = false;
+        _errorSucursales = e.message;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _cargandoSucursales = false;
+        _errorSucursales = 'No se pudieron cargar sucursales: $e';
+      });
+    }
+  }
+
   Future<void> _submit() async {
     setState(() => _serverError = null);
     if (!_formKey.currentState!.validate()) return;
@@ -64,6 +132,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
     setState(() => _loading = true);
     try {
+      if (_sucursalSeleccionadaCodigo == null) {
+        setState(() {
+          _loading = false;
+          _serverError = 'Selecciona una sucursal';
+        });
+        return;
+      }
       final result = await widget.repository.register(
         curp: _curpCtrl.text.trim().toUpperCase(),
         nombres: _nombresCtrl.text.trim(),
@@ -74,6 +149,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         email: Validators.normalizeEmail(_emailCtrl.text),
         telefono: telefonoNormalizado,
         password: _passwordCtrl.text,
+        codigoSucursal: _sucursalSeleccionadaCodigo!,
       );
       if (!mounted) return;
       widget.onRegistered?.call(result);
@@ -212,6 +288,136 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     validator: Validators.telefono,
                   ),
                   const SizedBox(height: 20),
+                  _section('Sucursal'),
+                  if (_cargandoSucursales)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 12),
+                      child: Center(child: CircularProgressIndicator()),
+                    )
+                  else if (_errorSucursales != null)
+                    _ServerErrorCard(
+                      message: _errorSucursales!,
+                      onRetry: _cargarSucursales,
+                    )
+                  else if (_sucursalesDisponibles.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 12),
+                      child: Text(
+                        'No hay sucursales operativas disponibles. '
+                        'Contacta al banco.',
+                      ),
+                    )
+                  else
+                    DropdownButtonFormField<String>(
+                      initialValue: _sucursalSeleccionadaCodigo,
+                      isExpanded: true,
+                      decoration: const InputDecoration(
+                        labelText: 'Sucursal',
+                        prefixIcon: Icon(Icons.business_outlined),
+                        helperText: 'Donde se te asignara tu cuenta',
+                      ),
+                      selectedItemBuilder: (context) => _sucursalesDisponibles
+                          .map(
+                            (s) => Text.rich(
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
+                              TextSpan(
+                                children: [
+                                  TextSpan(
+                                    text: s.nombreSucursal,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  if (s.codigoPostal != null) ...[
+                                    const TextSpan(text: '  ·  CP '),
+                                    TextSpan(
+                                      text: s.codigoPostal,
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: AppColors.of(context)
+                                            .textSecondary,
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                          )
+                          .toList(),
+                      items: _sucursalesDisponibles
+                          .map(
+                            (s) => DropdownMenuItem<String>(
+                              value: s.codigoSucursal,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                    vertical: 8, horizontal: 4),
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      Icons.business_outlined,
+                                      size: 18,
+                                      color: AppColors.of(context)
+                                          .textSecondary,
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            s.nombreSucursal,
+                                            overflow:
+                                                TextOverflow.ellipsis,
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                          if (s.ciudad != null ||
+                                              s.codigoPostal != null)
+                                            Text(
+                                              [
+                                                if (s.ciudad != null)
+                                                  s.ciudad,
+                                                if (s.codigoPostal != null)
+                                                  'CP ${s.codigoPostal}',
+                                              ].join(' · '),
+                                              overflow:
+                                                  TextOverflow.ellipsis,
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                color: AppColors.of(context)
+                                                    .textSecondary,
+                                              ),
+                                            ),
+                                          Text(
+                                            s.codigoSucursal,
+                                            overflow:
+                                                TextOverflow.ellipsis,
+                                            style: TextStyle(
+                                              fontSize: 10,
+                                              color: Colors.grey.shade500,
+                                              fontFamily: 'monospace',
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (v) => setState(
+                        () => _sucursalSeleccionadaCodigo = v,
+                      ),
+                      validator: (v) =>
+                          v == null ? 'Selecciona una sucursal' : null,
+                    ),
+                  const SizedBox(height: 20),
                   _section('Contraseña'),
                   TextFormField(
                     controller: _passwordCtrl,
@@ -296,9 +502,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
 }
 
 class _ServerErrorCard extends StatelessWidget {
-  const _ServerErrorCard({required this.message});
+  const _ServerErrorCard({required this.message, this.onRetry});
 
   final String message;
+  final VoidCallback? onRetry;
 
   @override
   Widget build(BuildContext context) {
@@ -320,6 +527,12 @@ class _ServerErrorCard extends StatelessWidget {
               style: TextStyle(color: tokens.error, fontSize: 13),
             ),
           ),
+          if (onRetry != null)
+            TextButton.icon(
+              onPressed: onRetry,
+              icon: const Icon(Icons.refresh, size: 16),
+              label: const Text('Reintentar'),
+            ),
         ],
       ),
     );
