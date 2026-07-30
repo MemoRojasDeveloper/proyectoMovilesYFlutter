@@ -51,33 +51,21 @@ git clone <URL_DEL_REPOSITORIO>
 cd proyectoMovilesYFlutter
 ```
 
-### 2. Crear la base de datos en Supabase
+### 2. Base de datos
 
-1. Crea un proyecto nuevo en [supabase.com](https://supabase.com).
-2. Ve a **Project Settings → Database → Connection string** y copia
-   la cadena **Transaction pooler puerto 6543**
-   (`aws-0-XXXX.pooler.supabase.com:6543/postgres`).
-3. En el **SQL Editor**, ejecuta **en este orden** los archivos de `supabase/`:
-
-```sql
--- 1) Crear las tablas base (cliente, sucursal, cuenta_corriente, privilegio, prestamo, ...)
-\i supabase/01_create_base.sql
-
--- 2) Agregar la tabla de movimientos
-\i supabase/02_create_movimiento.sql
-
--- 3) Agregar catalogo_servicio y campos nuevos a domiciliacion
-\i supabase/03_create_catalogo_y_domiciliacion.sql
-
--- 4) (Opcional) Poblar el catalogo con proveedores de ejemplo
-\i supabase/04_seed_catalogo_ejemplo.sql
-```
+La base de datos ya está provisionada y gestionada por el equipo en Supabase.
+Si necesitás acceso, pedíselo al administrador del proyecto (todos en el
+equipo la pueden ver en el panel de Supabase).
 
 > ⚠️ **El puerto 5432 directo está bloqueado** desde la mayoría de redes
-> residenciales. Usa el pooler 6543. El driver `pg8000` está preconfigurado
+> residenciales. Usa el **pooler 6543** (`aws-0-XXXX.pooler.supabase.com:6543`)
+> en el `DATABASE_URL` de tu `.env`. El driver `pg8000` está preconfigurado
 > en `app/__init__.py` para usar TLS automáticamente con Supabase.
 
-#### Asignar rol de empleado a un cliente existente
+#### Cambiar el rol de un usuario a empleado
+
+Si necesitás promover un cliente existente a empleado (rol `empleado`),
+pedile al admin que ejecute en el SQL Editor de Supabase:
 
 ```sql
 UPDATE public.cliente SET rol = 'empleado' WHERE email = 'admin@banco.local';
@@ -112,8 +100,8 @@ Copia `.env.example` → `.env` y rellena:
 DATABASE_URL=postgresql://postgres.XXXX:TU_PASSWORD@aws-0-XXXX.pooler.supabase.com:6543/postgres
 
 # Stripe: la publica va en el frontend, la secreta SOLO en el backend
-STRIPE_PUBLIC_KEY=pk_test_51TiftPAr...
-STRIPE_SECRET_KEY=sk_test_51TiftPAr...
+STRIPE_PUBLIC_KEY= lo dejé vacío
+STRIPE_SECRET_KEY=sk_test_...
 
 # Genera una:  python -c "import secrets; print(secrets.token_urlsafe(48))"
 JWT_SECRET_KEY=cambia-en-produccion
@@ -413,11 +401,6 @@ proyectoMovilesYFlutter/
 │   └── utils/
 │       ├── validation.py           # regex CURP / email / password / etc
 │       └── auth.py                 # decorador @require_auth
-├── supabase/                       # migrations SQL
-│   ├── 01_create_base.sql
-│   ├── 02_create_movimiento.sql
-│   ├── 03_create_catalogo_y_domiciliacion.sql
-│   └── 04_seed_catalogo_ejemplo.sql
 ├── tests/
 ├── requirements.txt                # stack completo + transitivas fijadas
 ├── .env.example
@@ -450,4 +433,4 @@ proyectoMovilesYFlutter/
 | `This API call cannot be made with a publishable API key` | `STRIPE_SECRET_KEY` está mal configurada | ve a https://dashboard.stripe.com/test/apikeys → fila "Clave secreta" |
 | Flutter no conecta al backend | `API_BASE_URL` apunta a `10.0.2.2` pero no estás en emulador | `flutter run --dart-define=API_BASE_URL=http://localhost:5000` |
 | Préstamo no se aprueba | la tasa está fuera de 9-18 % | ajusta la tasa al rango legal |
-| `relation "movimiento" does not exist` | no aplicaste `supabase/02_create_movimiento.sql` | ejecútalo en SQL Editor |
+| `relation "movimiento" does not exist` | la tabla de movimientos no se creó en Supabase | pedile al admin que la cree (ver sección "Base de datos" arriba) |
