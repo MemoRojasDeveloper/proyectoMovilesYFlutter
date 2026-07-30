@@ -43,14 +43,16 @@ junit*.xml
 *.log
 *.log.*
 flask.log
-server.log
+_server.log
 *.sqlite
 *.sqlite3
 *.db
+*.err
+
 
 # ─── Backups de bases de datos y dumps 
 *.sql
-!supabase/*.sql
+*.dump
 
 # ─── Sistema operativo
 .DS_Store

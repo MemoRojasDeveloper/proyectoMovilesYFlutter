@@ -70,6 +70,24 @@ def create_app(config_name: str | None = None) -> Flask:
 
     register_blueprints(app)
 
+    # Arrancamos el cobrador automatico de domiciliaciones SOLO en
+    # el proceso WSGI real (no en tests ni en reload del reloader).
+    # Evita que se dispare dos veces cuando Flask esta en modo debug.
+    import os as _os
+    if not app.config.get("TESTING") and not _os.getenv("FLASK_SKIP_COBRADOR"):
+        if not _os.getenv("WERKZEUG_RUN_MAIN") and app.debug:
+            # Primer arranque del reloader: solo el hijo debe lanzar el thread
+            pass
+        else:
+            try:
+                from .services.cobrador_service import iniciar_en_background
+                iniciar_en_background(app)
+            except Exception:
+                import logging as _log
+                _log.getLogger(__name__).exception(
+                    "No se pudo iniciar el cobrador automatico"
+                )
+
     # Rutas de health check (no son blueprints para mantenerlas simples)
     @app.route("/")
     def index():

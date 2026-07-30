@@ -6,6 +6,8 @@ Opera UNICAMENTE sobre `public.cliente` en Supabase. No existe tabla
 `POST /api/auth/register` crea en una sola transaccion:
   - 1 fila en public.cliente (identidad + password_hash)
   - 1 fila en public.cuenta_corriente (codigo_cuenta derivado de la CURP)
+  - N filas en public.cliente_cuenta_privilegio (privilegios base:
+    consultar_saldo, transferir, pagar_domiciliacion, cerrar_cuenta)
 """
 from __future__ import annotations
 
@@ -16,7 +18,13 @@ from flask_jwt_extended import get_jwt, get_jwt_identity
 from sqlalchemy import func
 
 from ..extensions import db
-from ..models import Cliente, CuentaCorriente, Sucursal
+from ..models import (
+    Cliente,
+    ClienteCuentaPrivilegio,
+    CuentaCorriente,
+    Privilegio,
+    Sucursal,
+)
 from ..utils import require_auth
 from ..utils.validation import (
     normalizar_telefono,
@@ -27,6 +35,60 @@ from ..utils.validation import (
 )
 
 bp = Blueprint("auth", __name__, url_prefix="/api/auth")
+
+
+# Privilegios que TODO cliente nuevo recibe al registrarse sobre
+# SU cuenta recien creada.
+PRIVILEGIOS_BASE_CLIENTE = (
+    ("consultar_saldo", "Consultar el saldo y movimientos de la cuenta"),
+    ("transferir", "Realizar transferencias a otras cuentas"),
+    ("pagar_domiciliacion", "Pagar las domiciliaciones asociadas"),
+    ("cerrar_cuenta", "Cerrar la cuenta"),
+)
+
+
+def _asegurar_privilegios_base() -> dict[str, int]:
+    """Crea los privilegios base en `public.privilegio` si no existen.
+
+    Devuelve un dict {nombre_operacion: id_privilegio}.
+    Idempotente: corre multiples veces sin duplicar.
+    """
+    resultado: dict[str, int] = {}
+    for nombre, descripcion in PRIVILEGIOS_BASE_CLIENTE:
+        priv = (
+            db.session.query(Privilegio)
+            .filter(Privilegio.nombre_operacion == nombre)
+            .first()
+        )
+        if priv is None:
+            priv = Privilegio(nombre_operacion=nombre, descripcion=descripcion)
+            db.session.add(priv)
+            db.session.flush()
+        resultado[nombre] = priv.id_privilegio
+    return resultado
+
+
+def _asignar_privilegios(curp: str, codigo_cuenta: str, ids: dict[str, int]) -> None:
+    """Inserta una fila en `cliente_cuenta_privilegio` por cada privilegio.
+
+    Inserta solo si no existe ya (idempotente).
+    """
+    for id_priv in ids.values():
+        existe = (
+            db.session.query(ClienteCuentaPrivilegio)
+            .filter(
+                ClienteCuentaPrivilegio.curp == curp,
+                ClienteCuentaPrivilegio.codigo_cuenta == codigo_cuenta,
+                ClienteCuentaPrivilegio.id_privilegio == id_priv,
+            )
+            .first()
+        )
+        if existe is None:
+            db.session.add(ClienteCuentaPrivilegio(
+                curp=curp,
+                codigo_cuenta=codigo_cuenta,
+                id_privilegio=id_priv,
+            ))
 
 
 def _generar_codigo_cuenta(curp: str, codigo_sucursal: str) -> str:
@@ -146,6 +208,11 @@ def register():
             fecha_apertura=date.today(),
         )
         db.session.add(cuenta)
+
+        # Crear / reutilizar los 4 privilegios base y asignarlos al
+        # cliente sobre SU nueva cuenta (todo en la misma transaccion).
+        ids_privilegios = _asegurar_privilegios_base()
+        _asignar_privilegios(curp, codigo_cuenta, ids_privilegios)
 
         db.session.commit()
     except Exception as exc:

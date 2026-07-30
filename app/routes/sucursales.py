@@ -156,6 +156,9 @@ def obtener_sucursal(codigo: str):
 # GET /api/sucursales/<codigo>/cuentas
 # Lista las cuentas corrientes asociadas a esta sucursal
 # (para mostrar en el dashboard de detalle).
+# Tambien incluye, para cada cuenta, el listado resumido de
+# domiciliaciones activas (para que el empleado pueda ver y dar
+# de baja).
 @bp.route("/sucursales/<string:codigo>/cuentas", methods=["GET"])
 @require_auth()
 def listar_cuentas_sucursal(codigo: str):
@@ -175,11 +178,32 @@ def listar_cuentas_sucursal(codigo: str):
         .filter(Cliente.codigo_sucursal == codigo_up)
         .scalar()
     )
+
+    # Domiciliaciones agrupadas por cuenta (solo activas + bajas)
+    codigos = [c.codigo_cuenta for c in cuentas]
+    domis_por_cuenta: dict[str, list] = {k: [] for k in codigos}
+    if codigos:
+        from ..models import Domiciliacion  # lazy import
+        rows = (
+            db.session.query(Domiciliacion)
+            .filter(Domiciliacion.codigo_cuenta.in_(codigos))
+            .order_by(Domiciliacion.codigo_cuenta, Domiciliacion.id_domiciliacion)
+            .all()
+        )
+        for d in rows:
+            domis_por_cuenta.setdefault(d.codigo_cuenta, []).append(d.to_dict())
+
+    cuentas_payload = []
+    for c in cuentas:
+        d = c.to_dict()
+        d["domiciliaciones"] = domis_por_cuenta.get(c.codigo_cuenta, [])
+        cuentas_payload.append(d)
+
     return jsonify({
         "codigo_sucursal": codigo_up,
         "total_cuentas": len(cuentas),
         "total_clientes": clientes_count,
-        "cuentas": [c.to_dict() for c in cuentas],
+        "cuentas": cuentas_payload,
     }), 200
 
 

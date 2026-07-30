@@ -169,6 +169,15 @@ ThemeData _baseTheme({
         disabledForegroundColor: tokens.textSecondary,
       ),
     ),
+    filledButtonTheme: FilledButtonThemeData(
+      style: FilledButton.styleFrom(
+        foregroundColor: Colors.white,
+        textStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
+        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 24),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        disabledForegroundColor: Colors.white.withValues(alpha: 0.7),
+      ),
+    ),
     textButtonTheme: TextButtonThemeData(
       style: TextButton.styleFrom(foregroundColor: tokens.primary),
     ),

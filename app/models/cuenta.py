@@ -14,6 +14,7 @@ class CuentaCorriente(db.Model):
     )
     saldo = db.Column(db.Numeric(15, 2), default=0.00)
     fecha_apertura = db.Column(db.Date, nullable=False)
+    activo = db.Column(db.Boolean, nullable=False, default=True)
 
     def to_dict(self) -> dict:
         return {
@@ -23,4 +24,5 @@ class CuentaCorriente(db.Model):
             "fecha_apertura": self.fecha_apertura.strftime("%Y-%m-%d")
             if self.fecha_apertura
             else None,
+            "activo": self.activo,
         }

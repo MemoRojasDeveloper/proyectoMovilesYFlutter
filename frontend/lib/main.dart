@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'core/theme.dart';
 import 'features/auth/auth_repository.dart';
 import 'features/auth/login_screen.dart';
+import 'features/cliente/cliente_dashboard_shell.dart';
 import 'features/empleado/sucursales_empleado_screen.dart';
 import 'features/home/home_placeholder_screen.dart';
 
@@ -109,10 +110,10 @@ class _BancoSantanderAppState extends State<BancoSantanderApp> {
         themeController: widget.themeController,
       );
     }
-    return HomePlaceholderScreen(
+    return ClienteDashboardShell(
       user: user,
-      repository: widget.authRepository,
       onLogout: _onLogout,
+      themeController: widget.themeController,
     );
   }
 }

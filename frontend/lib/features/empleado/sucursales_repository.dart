@@ -119,7 +119,7 @@ class SucursalesRepository {
         .toList();
   }
 
-  /// GET /api/sucursales/<codigo>/cuentas
+  /// GET `/api/sucursales/<codigo>/cuentas`
   Future<CuentasSucursalResponse> obtenerCuentas(String codigo) async {
     final token = await _token();
     final res = await _api.get(
@@ -203,6 +203,84 @@ class SucursalesRepository {
     }
     return Sucursal.fromJson(res);
   }
+
+  /// PATCH `/api/cuentas/<codigo>/activo`
+  Future<CuentaCorriente> toggleActivoCuenta(
+    String codigoCuenta,
+    bool activo,
+  ) async {
+    final token = await _token();
+    final res = await _api.patch(
+      '/api/cuentas/${Uri.encodeComponent(codigoCuenta)}/activo',
+      body: {'activo': activo},
+      token: token,
+    );
+    if (res is! Map<String, dynamic>) {
+      throw ServerApiException();
+    }
+    final cuenta = res['cuenta'];
+    if (cuenta is Map<String, dynamic>) {
+      return CuentaCorriente.fromJson(cuenta);
+    }
+    throw ServerApiException();
+  }
+
+  /// PATCH `/api/cuentas/<codigo>/sucursal`
+  Future<CuentaCorriente> cambiarSucursalCuenta(
+    String codigoCuenta,
+    String nuevaSucursalCodigo,
+  ) async {
+    final token = await _token();
+    final res = await _api.patch(
+      '/api/cuentas/${Uri.encodeComponent(codigoCuenta)}/sucursal',
+      body: {'codigo_sucursal': nuevaSucursalCodigo.toUpperCase()},
+      token: token,
+    );
+    if (res is! Map<String, dynamic>) {
+      throw ServerApiException();
+    }
+    final cuenta = res['cuenta'];
+    if (cuenta is Map<String, dynamic>) {
+      return CuentaCorriente.fromJson(cuenta);
+    }
+    throw ServerApiException();
+  }
+
+  /// PATCH `/api/cuentas/<codigo>/saldo` (solo empleado)
+  Future<Map<String, dynamic>> asignarSaldo({
+    required String codigoCuenta,
+    required double monto,
+    required String operacion, // 'sumar' o 'restar'
+    String? motivo,
+  }) async {
+    final token = await _token();
+    final res = await _api.patch(
+      '/api/cuentas/${codigoCuenta.toUpperCase()}/saldo',
+      body: {
+        'monto': monto,
+        'operacion': operacion,
+        if (motivo != null && motivo.isNotEmpty) 'motivo': motivo,
+      },
+      token: token,
+    );
+    if (res is! Map<String, dynamic>) {
+      throw ServerApiException();
+    }
+    return res;
+  }
+
+  /// DELETE `/api/domiciliaciones/<id>` (solo empleado)
+  Future<Map<String, dynamic>> darBajaDomiciliacion(int idDomiciliacion) async {
+    final token = await _token();
+    final res = await _api.delete(
+      '/api/domiciliaciones/$idDomiciliacion',
+      token: token,
+    );
+    if (res is! Map<String, dynamic>) {
+      throw ServerApiException();
+    }
+    return res;
+  }
 }
 
 /// Cuenta corriente basica (modelo para vista).
@@ -211,13 +289,21 @@ class CuentaCorriente {
     required this.codigoCuenta,
     required this.codigoSucursal,
     required this.saldo,
+    this.activo = true,
     this.fechaApertura,
+    this.domiciliaciones = const [],
   });
 
   final String codigoCuenta;
   final String codigoSucursal;
   final double saldo;
+  final bool activo;
   final DateTime? fechaApertura;
+
+  /// Lista cruda de domiciliaciones (de SucursalDetalle). Se mantiene
+  /// como Map para que el codigo del empleado no dependa del modelo
+  /// del cliente_repository. Solo lectura.
+  final List<Map<String, dynamic>> domiciliaciones;
 
   factory CuentaCorriente.fromJson(Map<String, dynamic> json) {
     double parseSaldo(Object? v) {
@@ -231,11 +317,17 @@ class CuentaCorriente {
       return null;
     }
 
+    final domis = (json['domiciliaciones'] as List? ?? const [])
+        .whereType<Map<String, dynamic>>()
+        .toList();
+
     return CuentaCorriente(
       codigoCuenta: json['codigo_cuenta'] as String,
       codigoSucursal: json['codigo_sucursal'] as String,
       saldo: parseSaldo(json['saldo']),
+      activo: json['activo'] as bool? ?? true,
       fechaApertura: parseDate(json['fecha_apertura']),
+      domiciliaciones: domis,
     );
   }
 }
