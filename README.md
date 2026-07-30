@@ -179,7 +179,7 @@ python -c "import bcrypt; print(bcrypt.hashpw(b'TuPassword1', bcrypt.gensalt()).
 -- 2. Inserta en Supabase (SQL Editor):
 UPDATE public.cliente
 SET password_hash = '<PEGAR_HASH_AQUI>', rol = 'empleado', activo = TRUE
-WHERE email = 'admin@banco.local';
+WHERE email = 'admin@banco.local'; *Esto es un ejemplo, podrías hacerlo con el CURP para más exactitud*
 ```
 
 ### Crear un cliente (vía API / frontend)
