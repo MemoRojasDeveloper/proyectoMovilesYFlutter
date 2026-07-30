@@ -73,6 +73,7 @@ UPDATE public.cliente SET rol = 'empleado' WHERE email = 'admin@banco.local';
 
 > Los empleados NO se registran por la API: se crean manualmente en Supabase
 > con `rol='empleado'`. Los clientes sí, vía `POST /api/auth/register`.
+>  Esto es un ejemplo, podrías hacerlo con el CURP para más exactitud
 
 ---
 
