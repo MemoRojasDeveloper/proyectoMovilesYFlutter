@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Color de fondo del icono adaptativo (Android 8.0+). -->
+    <!-- Tomado del paquete de iconos generado por ConvertICO.com. -->
+    <color name="ic_launcher_background">#FFFFFF</color>
+</resources>
