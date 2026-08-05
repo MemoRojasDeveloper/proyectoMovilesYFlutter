@@ -24,6 +24,9 @@ PyJWT==2.13.0
 stripe==15.3.0
 requests==2.34.2
 
+# Servidor WSGI de produccion
+gunicorn==23.0.0
+
 # Config / utilidades
 python-dotenv==1.2.2
 python-dateutil==2.9.0.post0

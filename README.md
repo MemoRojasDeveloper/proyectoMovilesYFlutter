@@ -148,6 +148,151 @@ flutter run -d chrome --dart-define=API_BASE_URL=http://localhost:5000
 
 ---
 
+## 🌐 Despliegue en un servidor propio
+
+### Opción recomendada: Flask (dev) o Gunicorn (prod) detrás de Apache
+
+#### 1) Backend en el servidor
+
+**Desarrollo (NO usar en prod):**
+```bash
+python app.py
+# Levanta en http://127.0.0.1:5000
+```
+
+**Producción con Gunicorn:**
+```bash
+pip install -r requirements.txt   # incluye gunicorn==23.0.0
+gunicorn -w 2 -b 127.0.0.1:5000 'app:app'
+# -w 2: 2 workers (ajusta según CPU/RAM)
+# -b 127.0.0.1:5000: SOLO escucha en localhost, Apache hace de proxy
+```
+
+**Producción con systemd (Linux):** crear `/etc/systemd/system/banco.service`:
+```ini
+[Unit]
+Description=Banco Santander API
+After=network.target
+
+[Service]
+User=www-data
+WorkingDirectory=/opt/banco
+Environment="PATH=/opt/banco/venv/bin"
+ExecStart=/opt/banco/venv/bin/gunicorn -w 2 -b 127.0.0.1:5000 'app:app'
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now banco
+```
+
+#### 2) Apache como reverse proxy + TLS
+
+Activar los módulos necesarios:
+```bash
+sudo a2enmod proxy proxy_http ssl headers rewrite
+sudo systemctl reload apache2
+```
+
+Habilitar el sitio:
+```bash
+sudo a2ensite banco-santander
+```
+
+Archivo `/etc/apache2/sites-available/banco-santander.conf`:
+
+```apache
+# Redirige HTTP -> HTTPS
+<VirtualHost *:80>
+    ServerName edwinguillermorojaslopez.com
+    ServerAlias www.edwinguillermorojaslopez.com
+
+    RewriteEngine On
+    RewriteRule ^(.*)$ https://%{HTTP_HOST}$1 [R=301,L]
+</VirtualHost>
+
+# HTTPS: hace proxy inverso al backend Flask/Gunicorn
+<VirtualHost *:443>
+    ServerName edwinguillermorojaslopez.com
+    ServerAlias www.edwinguillermorojaslopez.com
+
+    # Certificados de Let's Encrypt
+    SSLEngine on
+    SSLCertificateFile      /etc/letsencrypt/live/edwinguillermorojaslopez.com/fullchain.pem
+    SSLCertificateKeyFile   /etc/letsencrypt/live/edwinguillermorojaslopez.com/privkey.pem
+    SSLProtocol             all -SSLv2 -SSLv3 -TLSv1 -TLSv1.1
+    SSLCipherSuite          HIGH:!aNULL:!MD5
+
+    # Logs separados
+    ErrorLog  /var/log/apache2/banco-error.log
+    CustomLog /var/log/apache2/banco-access.log combined
+
+    # Proxy inverso: todo lo que llegue a /api va al backend
+    ProxyPreserveHost On
+    ProxyPass        /api/ http://127.0.0.1:5000/api/
+    ProxyPassReverse /api/ http://127.0.0.1:5000/api/
+
+    # Headers para que el backend vea el host y esquema correctos
+    RequestHeader set X-Forwarded-Proto "https"
+    RequestHeader set X-Real-IP   "%{REMOTE_ADDR}s"
+
+    # Limite de tiempo de lectura para conexiones lentas
+    ProxyTimeout 60
+</VirtualHost>
+```
+
+```bash
+sudo apache2ctl configtest
+sudo systemctl reload apache2
+```
+
+#### 3) Front apuntando a tu dominio
+
+> ⚠️ El proyecto Flutter vive en `frontend/`, no en la raíz. Antes de
+> cualquier `flutter build ...` tenés que entrar ahí:
+> ```bash
+> cd frontend
+> ```
+> Si te aparece `Error: No pubspec.yaml file found`, es que estás en la
+> raíz del repo (donde está Flask). Bajá a `frontend/` y reintentá.
+
+Cuando compiles el front, pasá tu URL pública:
+```bash
+cd frontend
+flutter build web  --dart-define=API_BASE_URL=https://edwinguillermorojaslopez.com/api
+flutter build apk  --dart-define=API_BASE_URL=https://edwinguillermorojaslopez.com/api
+flutter build ios  --dart-define=API_BASE_URL=https://edwinguillermorojaslopez.com/api
+```
+
+#### 4) CORS
+
+Tu backend ya tiene `CORS(...)` configurado en `app/__init__.py` para aceptar
+todos los orígenes (`origins="*"`). Si querés restringirlo a tu dominio en
+producción, editá:
+```python
+CORS(
+    app,
+    resources={r"/api/*": {"origins": ["https://edwinguillermorojaslopez.com"]}},
+    supports_credentials=True,
+)
+```
+
+#### 5) Variables de entorno en el servidor
+
+No subas tu `.env` al repo. En el servidor creá uno manualmente:
+```bash
+sudo nano /opt/banco/.env
+```
+
+Con el mismo formato que tu `.env` local pero con la `DATABASE_URL`
+apuntando al pooler de Supabase y `FLASK_ENV=production`.
+
+---
+
 ## 🔐 Autenticación
 
 Login **único y unificado**: clientes y empleados comparten el mismo endpoint,
