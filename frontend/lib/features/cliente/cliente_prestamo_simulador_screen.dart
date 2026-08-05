@@ -1,10 +1,10 @@
-/// Pantalla de simulacion de prestamos.
+/// Pantalla "simular y (opcional) solicitar" prestamo.
 ///
-/// Llama a /api/prestamos/simular (endpoint publico) y muestra el
-/// resultado al instante. No persiste nada: solo calcula.
-///
-/// Si la tasa esta fuera del rango legal (9%-18%), el backend
-/// rechaza y mostramos el error.
+/// Tiene 2 modos:
+///  - Si NO se pasa `cuentas`, solo simula (modo publico, sin auth).
+///  - Si se pasa `cuentas`, muestra dropdown de cuenta + campo motivo,
+///    y despues de simular ofrece "Enviar solicitud" que llama a
+///    `POST /api/clientes/{curp}/prestamos/solicitar`.
 library;
 
 import 'package:flutter/material.dart';
@@ -18,11 +18,16 @@ class ClientePrestamoSimuladorScreen extends StatefulWidget {
   const ClientePrestamoSimuladorScreen({
     super.key,
     required this.curp,
-    this.onCreated,
+    this.cuentas = const [],
+    this.onSolicitado,
   });
 
   final String curp;
-  final VoidCallback? onCreated;
+  final List<ClienteCuenta> cuentas;
+
+  /// Callback que se invoca cuando se envía la solicitud con éxito.
+  /// Sirve para que la pantalla de prestamos del cliente recargue.
+  final VoidCallback? onSolicitado;
 
   @override
   State<ClientePrestamoSimuladorScreen> createState() =>
@@ -35,17 +40,32 @@ class _ClientePrestamoSimuladorScreenState
   final _montoCtrl = TextEditingController();
   final _tasaCtrl = TextEditingController(text: '15.0');
   final _plazoCtrl = TextEditingController(text: '12');
+  final _motivoCtrl = TextEditingController();
   final _repo = ClienteRepository();
 
   SimulacionPrestamo? _resultado;
   bool _calculando = false;
+  bool _enviando = false;
   String? _error;
+
+  String? _cuentaSeleccionada;
+
+  bool get _esSolicitud => widget.cuentas.isNotEmpty;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.cuentas.isNotEmpty) {
+      _cuentaSeleccionada = widget.cuentas.first.codigoCuenta;
+    }
+  }
 
   @override
   void dispose() {
     _montoCtrl.dispose();
     _tasaCtrl.dispose();
     _plazoCtrl.dispose();
+    _motivoCtrl.dispose();
     super.dispose();
   }
 
@@ -77,6 +97,64 @@ class _ClientePrestamoSimuladorScreenState
       setState(() {
         _error = 'Error: $e';
         _calculando = false;
+      });
+    }
+  }
+
+  Future<void> _enviarSolicitud() async {
+    if (_resultado == null) return;
+    if (_esSolicitud) {
+      final motivoOk = _motivoCtrl.text.trim();
+      if (motivoOk.isEmpty) {
+        setState(() => _error = 'Contanos para qué necesitás el préstamo');
+        return;
+      }
+      if (_cuentaSeleccionada == null) {
+        setState(() => _error = 'Elegí la cuenta donde aplicarlo');
+        return;
+      }
+    }
+
+    setState(() {
+      _enviando = true;
+      _error = null;
+    });
+
+    final monto = double.parse(_montoCtrl.text.trim());
+    final tasa = double.parse(_tasaCtrl.text.trim());
+    final plazo = int.parse(_plazoCtrl.text.trim());
+
+    try {
+      await _repo.solicitarPrestamo(
+        curpTitular: widget.curp,
+        codigoCuenta: _cuentaSeleccionada!,
+        monto: monto,
+        tasa: tasa,
+        plazo: plazo,
+        motivo: _motivoCtrl.text.trim(),
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Solicitud enviada. Queda pendiente de aprobación.',
+          ),
+          backgroundColor: Color(0xFF2E7D32),
+        ),
+      );
+      widget.onSolicitado?.call();
+      Navigator.of(context).pop(true);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e.message;
+        _enviando = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = 'No se pudo enviar: $e';
+        _enviando = false;
       });
     }
   }
@@ -186,6 +264,60 @@ class _ClientePrestamoSimuladorScreenState
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
               ),
             ),
+
+            // Si el cliente tiene cuentas, mostramos selector + motivo
+            // y, luego de simular, habilitamos la solicitud real.
+            if (_esSolicitud) ...[
+              const SizedBox(height: 24),
+              const Divider(),
+              const SizedBox(height: 8),
+              Text(
+                'Solicitar el préstamo',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: tokens.textPrimary,
+                ),
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                initialValue: _cuentaSeleccionada,
+                isExpanded: true,
+                decoration: const InputDecoration(
+                  labelText: 'Cuenta',
+                  prefixIcon: Icon(Icons.account_balance_wallet_outlined),
+                ),
+                items: widget.cuentas
+                    .map((c) => DropdownMenuItem(
+                          value: c.codigoCuenta,
+                          child: Text(
+                            '${c.codigoCuenta} · \$${c.saldo.toStringAsFixed(2)}',
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ))
+                    .toList(),
+                onChanged: (v) => setState(() => _cuentaSeleccionada = v),
+              ),
+              const SizedBox(height: 14),
+              TextFormField(
+                controller: _motivoCtrl,
+                maxLines: 3,
+                maxLength: 1000,
+                decoration: const InputDecoration(
+                  labelText: 'Motivo de la solicitud',
+                  hintText: 'Ej. Necesito cancelar la tarjeta de crédito',
+                  prefixIcon: Icon(Icons.edit_note),
+                  alignLabelWithHint: true,
+                ),
+                validator: (v) {
+                  if (_resultado == null) return null;
+                  if (v == null || v.trim().isEmpty) {
+                    return 'Contanos para qué necesitás el préstamo';
+                  }
+                  return null;
+                },
+              ),
+            ],
             if (_error != null) ...[
               const SizedBox(height: 16),
               Container(
@@ -208,6 +340,43 @@ class _ClientePrestamoSimuladorScreenState
             if (_resultado != null) ...[
               const SizedBox(height: 20),
               _ResultadoCard(r: _resultado!, tokens: tokens),
+            ],
+            if (_resultado != null && _esSolicitud) ...[
+              const SizedBox(height: 20),
+              ElevatedButton.icon(
+                onPressed: _enviando ? null : _enviarSolicitud,
+                icon: _enviando
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Icon(Icons.send),
+                label: Text(
+                  _enviando ? 'Enviando solicitud...' : 'Solicitar préstamo',
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.black,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'La solicitud queda en revisión por un empleado. '
+                'Te avisamos cuando se apruebe o rechace.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: tokens.textSecondary,
+                  fontSize: 12,
+                ),
+              ),
             ],
           ],
         ),

@@ -17,6 +17,7 @@ import '../../core/api_exception.dart';
 import '../../core/auth_storage.dart';
 import '../../core/theme.dart';
 import '../auth/auth_repository.dart';
+import 'prestamos_empleado_screen.dart';
 import 'sucursal_detalle_screen.dart';
 import 'sucursal_form_screen.dart';
 import 'sucursales_repository.dart';
@@ -140,7 +141,7 @@ class _SucursalesEmpleadoScreenState extends State<SucursalesEmpleadoScreen> {
         'Código: ${s.codigoSucursal}\n'
         'Dirección: ${s.direccionCorta}\n'
         'Teléfono: ${s.telefono ?? "—"}\n'
-        'Horario: ${s.horario ?? "—"}';
+        'Horario: ${s.horarioLabel ?? "—"}';
     await Clipboard.setData(ClipboardData(text: texto));
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -186,6 +187,17 @@ class _SucursalesEmpleadoScreenState extends State<SucursalesEmpleadoScreen> {
       appBar: AppBar(
         title: const Text('Sucursales'),
         actions: [
+          IconButton(
+            tooltip: 'Solicitudes de préstamo',
+            icon: const Icon(Icons.assignment_outlined),
+            onPressed: () async {
+              await Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const PrestamosEmpleadoScreen(),
+                ),
+              );
+            },
+          ),
           if (widget.themeController != null) _ThemeToggleButton(
             controller: widget.themeController!,
           ),
@@ -498,7 +510,7 @@ class _SucursalCard extends StatelessWidget {
                         fontSize: 12,
                       ),
                     ),
-                    if (sucursal.telefono != null || sucursal.horario != null)
+                    if (sucursal.telefono != null || sucursal.horarioLabel != null)
                       Padding(
                         padding: const EdgeInsets.only(top: 4),
                         child: Row(
@@ -514,13 +526,13 @@ class _SucursalCard extends StatelessWidget {
                                 ),
                               ),
                             ],
-                            if (sucursal.horario != null) ...[
+                            if (sucursal.horarioLabel != null) ...[
                               const SizedBox(width: 10),
                               Icon(Icons.access_time, size: 12, color: tokens.textSecondary),
                               const SizedBox(width: 3),
                               Expanded(
                                 child: Text(
-                                  sucursal.horario!,
+                                  sucursal.horarioLabel!,
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: TextStyle(

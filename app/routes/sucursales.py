@@ -26,33 +26,107 @@ bp = Blueprint("sucursales", __name__)
 # ── Validadores locales (mantienen una sola fuente de verdad) ─────
 CP_RE = re.compile(r"^[0-9]{5}$")
 TEL_RE = re.compile(r"^[0-9]{10}$")
-CODIGO_RE = re.compile(r"^[A-Z0-9-]{3,20}$")
+# codigo_sucursal lo genera la DB: 'SUC-001', 'SUC-002', ...
+CODIGO_RE = re.compile(r"^SUC-[0-9]{3,}$")
+HHMM_RE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
+
+# Limites por columna (alineados con la migración DB).
+MAX_LEN = {
+    "nombre_sucursal": 100,
+    "calle": 120,
+    "numero": 10,
+    "colonia": 120,
+    "ciudad": 80,
+    "estado": 40,
+    "codigo_postal": 5,
+    "telefono": 10,
+}
 
 
 def _err(msg: str, code: int = 400):
     return jsonify({"error": msg}), code
 
 
+def _validar_horario(data: dict) -> tuple[dict | None, str | None]:
+    """Lee y valida los campos de horario.
+
+    Formato esperado (todos opcionales, pero si uno viene par):
+        dias_semana: list[int]  con 1..7 (1=L ... 7=D)
+        hora_apertura: "HH:MM"
+        hora_cierre:   "HH:MM"
+
+    Reglas:
+        - Si llega `dias_semana`, `hora_apertura` y `hora_cierre` son OBLIGATORIOS.
+        - Si llega uno de los dos horarios, el otro también.
+        - cada día debe estar en [1,7]
+        - cada hora debe matchear HHMM_RE
+
+    Devuelve (dict_normalizado_horario, mensaje_error_o_None).
+    """
+    # `dias_semana` puede llegar como lista o como set
+    dias_raw = data.get("dias_semana")
+    ap_raw = data.get("hora_apertura")
+    ci_raw = data.get("hora_cierre")
+
+    # Cualquiera presente -> los 3 deben estar
+    presente = sum(x is not None for x in (dias_raw, ap_raw, ci_raw))
+    if 0 < presente < 3:
+        return None, (
+            "horario incompleto: si envias dias_semana u horas, "
+            "debes enviar los 3 campos"
+        )
+
+    if presente == 0:
+        return {"dias_semana": None, "hora_apertura": None, "hora_cierre": None}, None
+
+    # dias_semana
+    if not isinstance(dias_raw, list):
+        return None, "dias_semana debe ser una lista de enteros [1..7]"
+    try:
+        dias = sorted({int(d) for d in dias_raw})
+    except (TypeError, ValueError):
+        return None, "dias_semana debe contener enteros"
+    if not dias or any(d < 1 or d > 7 for d in dias):
+        return None, "dias_semana debe contener enteros en [1, 7]"
+
+    # horas
+    ap = (str(ap_raw) or "").strip()
+    ci = (str(ci_raw) or "").strip()
+    if not HHMM_RE.match(ap) or not HHMM_RE.match(ci):
+        return None, "hora_apertura/hora_cierre deben tener formato HH:MM (24h)"
+
+    # Comparación simple de strings "HH:MM" para validar orden
+    if ap >= ci:
+        return None, "hora_apertura debe ser estrictamente menor a hora_cierre"
+
+    return {"dias_semana": dias, "hora_apertura": ap, "hora_cierre": ci}, None
+
+
 def _validar_payload(data: dict, *, es_creacion: bool) -> tuple[dict, dict | None]:
-    """Devuelve (data_normalizada, errores_dict_o_None)."""
+    """Devuelve (data_normalizada, errores_dict_o_None).
+
+    En creación, `codigo_sucursal` se IGNORA del body: la DB lo asigna
+    automáticamente con la secuencia `sucursal_codigo_seq` ->
+    'SUC-001', 'SUC-002', ...
+    En edición (PUT), el código viene por URL, no por body.
+    """
     errores = {}
 
-    # codigo_sucursal
+    # codigo_sucursal: SOLO lo validamos si llega en el body (caso raro).
     codigo = (data.get("codigo_sucursal") or "").strip().upper()
-    if es_creacion:
-        if not codigo:
-            errores["codigo_sucursal"] = "codigo_sucursal es obligatorio"
-        elif not CODIGO_RE.match(codigo):
-            errores["codigo_sucursal"] = (
-                "codigo_sucursal debe tener 3-20 chars (A-Z, 0-9, guion)"
-            )
+    if codigo and not CODIGO_RE.match(codigo):
+        errores["codigo_sucursal"] = (
+            "codigo_sucursal debe tener formato SUC-NNN (autogenerado)"
+        )
 
     # nombre_sucursal
     nombre = (data.get("nombre_sucursal") or "").strip()
     if es_creacion and not nombre:
         errores["nombre_sucursal"] = "nombre_sucursal es obligatorio"
-    elif nombre and len(nombre) > 100:
-        errores["nombre_sucursal"] = "nombre_sucursal demasiado largo (max 100)"
+    elif nombre and len(nombre) > MAX_LEN["nombre_sucursal"]:
+        errores["nombre_sucursal"] = (
+            f"nombre_sucursal demasiado largo (max {MAX_LEN['nombre_sucursal']})"
+        )
 
     # codigo_postal
     cp = (data.get("codigo_postal") or "").strip()
@@ -69,8 +143,15 @@ def _validar_payload(data: dict, *, es_creacion: bool) -> tuple[dict, dict | Non
     if activo is not None and not isinstance(activo, bool):
         errores["activo"] = "activo debe ser booleano"
 
+    # ── Horario normalizado ──
+    horario_norm, horario_err = _validar_horario(data)
+    if horario_err:
+        # Asignamos el error al campo mas probable segun el mensaje
+        errores["horario"] = horario_err
+
+    # ── Lectura de los varchar libres y validación de longitud ──
+    campos_libres = ("calle", "numero", "colonia", "ciudad", "estado")
     normalizado = {
-        "codigo_sucursal": codigo,
         "nombre_sucursal": nombre,
         "calle": (data.get("calle") or "").strip() or None,
         "numero": (data.get("numero") or "").strip() or None,
@@ -79,8 +160,23 @@ def _validar_payload(data: dict, *, es_creacion: bool) -> tuple[dict, dict | Non
         "estado": (data.get("estado") or "").strip() or None,
         "codigo_postal": cp or None,
         "telefono": tel or None,
-        "horario": (data.get("horario") or "").strip() or None,
     }
+    if horario_norm:
+        normalizado.update(horario_norm)
+
+    for campo in campos_libres:
+        valor = normalizado[campo]
+        if valor is None:
+            continue
+        maximo = MAX_LEN[campo]
+        if len(valor) > maximo:
+            errores[campo] = (
+                f"{campo} demasiado largo (max {maximo} caracteres)"
+            )
+
+    # Si el caller mandó codigo_sucursal (raro), lo aceptamos.
+    if codigo:
+        normalizado["codigo_sucursal"] = codigo
     if activo is not None:
         normalizado["activo"] = activo
 
@@ -122,20 +218,35 @@ def listar_sucursales():
 @bp.route("/sucursales", methods=["POST"])
 @require_auth(roles=("empleado",))
 def crear_sucursal():
+    """Crea una sucursal. El `codigo_sucursal` lo genera la DB.
+
+    Body esperado (sin codigo_sucursal):
+        {
+            "nombre_sucursal": "Sucursal Centro",
+            "calle": "...",
+            ...
+        }
+
+    Respuesta: 201 con la sucursal completa, incluyendo el codigo_sucursal
+    autogenerado.
+    """
     data = request.get_json(silent=True) or {}
     normalizado, errores = _validar_payload(data, es_creacion=True)
     if errores:
         return jsonify({"error": "Datos inválidos", "detalles": errores}), 400
 
-    if db.session.get(Sucursal, normalizado["codigo_sucursal"]) is not None:
-        return _err(f"Ya existe la sucursal {normalizado['codigo_sucursal']}", 409)
+    # Si el cliente mandó codigo_sucursal, lo respetamos (caso raro);
+    # si no, lo dejamos None y la DB lo asigna con la secuencia.
+    codigo_cliente = normalizado.pop("codigo_sucursal", None)
 
     try:
         # Si no vino 'activo' en el body, forzar True al crear.
         normalizado.setdefault("activo", True)
-        nueva = Sucursal(**normalizado)
+        nueva = Sucursal(codigo_sucursal=codigo_cliente, **normalizado)
         db.session.add(nueva)
         db.session.commit()
+        # Refresca para traer el codigo_sucursal asignado por la DB
+        db.session.refresh(nueva)
     except Exception as exc:
         db.session.rollback()
         return _err(f"No se pudo crear: {exc!s}", 500)
@@ -227,7 +338,8 @@ def actualizar_sucursal(codigo: str):
     try:
         for campo in (
             "nombre_sucursal", "calle", "numero", "colonia",
-            "ciudad", "estado", "codigo_postal", "telefono", "horario",
+            "ciudad", "estado", "codigo_postal", "telefono",
+            "dias_semana", "hora_apertura", "hora_cierre",
         ):
             setattr(suc, campo, normalizado[campo])
         if "activo" in normalizado:

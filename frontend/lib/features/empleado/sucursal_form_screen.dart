@@ -5,8 +5,10 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../core/api_exception.dart';
+import '../../core/estados_mexico.dart';
 import '../../core/theme.dart';
 import 'sucursales_repository.dart';
 
@@ -25,9 +27,7 @@ class _SucursalFormScreenState extends State<SucursalFormScreen> {
   final _formKey = GlobalKey<FormState>();
   final _repo = SucursalesRepository();
 
-  late final TextEditingController _codigo;
   late final TextEditingController _nombre;
-  late final TextEditingController _horario;
   late final TextEditingController _telefono;
   late final TextEditingController _calle;
   late final TextEditingController _numero;
@@ -37,6 +37,11 @@ class _SucursalFormScreenState extends State<SucursalFormScreen> {
   late final TextEditingController _cp;
   late bool _activo;
 
+  // Horario: dias (1=L ... 7=D) + hora 24h apertura/cierre.
+  final Set<int> _diasSeleccionados = <int>{};
+  TimeOfDay? _horaApertura;
+  TimeOfDay? _horaCierre;
+
   bool _guardando = false;
 
   bool get _esEdicion => widget.sucursal != null;
@@ -45,9 +50,7 @@ class _SucursalFormScreenState extends State<SucursalFormScreen> {
   void initState() {
     super.initState();
     final s = widget.sucursal;
-    _codigo = TextEditingController(text: s?.codigoSucursal ?? '');
     _nombre = TextEditingController(text: s?.nombreSucursal ?? '');
-    _horario = TextEditingController(text: s?.horario ?? '');
     _telefono = TextEditingController(text: s?.telefono ?? '');
     _calle = TextEditingController(text: s?.calle ?? '');
     _numero = TextEditingController(text: s?.numero ?? '');
@@ -56,13 +59,36 @@ class _SucursalFormScreenState extends State<SucursalFormScreen> {
     _estado = TextEditingController(text: s?.estado ?? '');
     _cp = TextEditingController(text: s?.codigoPostal ?? '');
     _activo = s?.activo ?? true;
+
+    // Horario viene del backend ya tipado (dias_semana, hora_apertura, hora_cierre).
+    if (s?.diasSemana != null) {
+      _diasSeleccionados.addAll(s!.diasSemana!);
+    }
+    if (s?.horaApertura != null) {
+      final parts = s!.horaApertura!.split(':');
+      if (parts.length == 2) {
+        final h = int.tryParse(parts[0]);
+        final m = int.tryParse(parts[1]);
+        if (h != null && m != null) {
+          _horaApertura = TimeOfDay(hour: h, minute: m);
+        }
+      }
+    }
+    if (s?.horaCierre != null) {
+      final parts = s!.horaCierre!.split(':');
+      if (parts.length == 2) {
+        final h = int.tryParse(parts[0]);
+        final m = int.tryParse(parts[1]);
+        if (h != null && m != null) {
+          _horaCierre = TimeOfDay(hour: h, minute: m);
+        }
+      }
+    }
   }
 
   @override
   void dispose() {
-    _codigo.dispose();
     _nombre.dispose();
-    _horario.dispose();
     _telefono.dispose();
     _calle.dispose();
     _numero.dispose();
@@ -71,20 +97,6 @@ class _SucursalFormScreenState extends State<SucursalFormScreen> {
     _estado.dispose();
     _cp.dispose();
     super.dispose();
-  }
-
-  String? _valCodigo(String? v) {
-    final t = (v ?? '').trim().toUpperCase();
-    if (!_esEdicion) {
-      if (t.isEmpty) return 'Código obligatorio';
-      if (t.length < 3 || t.length > 20) {
-        return '3 a 20 caracteres';
-      }
-      if (!RegExp(r'^[A-Z0-9-]+$').hasMatch(t)) {
-        return 'Solo A-Z, 0-9 y guion';
-      }
-    }
-    return null;
   }
 
   String? _valNombre(String? v) {
@@ -107,9 +119,60 @@ class _SucursalFormScreenState extends State<SucursalFormScreen> {
     return null;
   }
 
+  // ── Horario: helpers ──────────────────────────────────────────
+  static const List<String> _diasCorto = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
+
+  /// Devuelve un dict con los 3 campos del horario para el backend.
+  /// Si el usuario no configuró los 3 (días + apertura + cierre),
+  /// devuelve los 3 en null (horario no configurado).
+  String _fmtHhmm(TimeOfDay t) =>
+      '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+
+  Map<String, dynamic> _serializarHorario() {
+    final completo = _diasSeleccionados.isNotEmpty &&
+        _horaApertura != null &&
+        _horaCierre != null;
+    if (!completo) {
+      return {
+        'dias_semana': null,
+        'hora_apertura': null,
+        'hora_cierre': null,
+      };
+    }
+    return {
+      'dias_semana': (_diasSeleccionados.toList()..sort()),
+      'hora_apertura': _fmtHhmm(_horaApertura!),
+      'hora_cierre': _fmtHhmm(_horaCierre!),
+    };
+  }
+
+  Future<void> _pickHora(BuildContext context, bool esApertura) async {
+    final inicial = (esApertura ? _horaApertura : _horaCierre) ??
+        TimeOfDay(hour: esApertura ? 9 : 18, minute: 0);
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: inicial,
+      builder: (ctx, child) => MediaQuery(
+        data: MediaQuery.of(ctx).copyWith(alwaysUse24HourFormat: true),
+        child: child!,
+      ),
+    );
+    if (picked != null) {
+      setState(() {
+        if (esApertura) {
+          _horaApertura = picked;
+        } else {
+          _horaCierre = picked;
+        }
+      });
+    }
+  }
+
   Future<void> _guardar() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _guardando = true);
+
+    final horario = _serializarHorario();
 
     final body = <String, dynamic>{
       'nombre_sucursal': _nombre.text.trim(),
@@ -120,7 +183,9 @@ class _SucursalFormScreenState extends State<SucursalFormScreen> {
       'estado': _estado.text.trim().isEmpty ? null : _estado.text.trim(),
       'codigo_postal': _cp.text.trim().isEmpty ? null : _cp.text.trim(),
       'telefono': _telefono.text.trim().isEmpty ? null : _telefono.text.trim(),
-      'horario': _horario.text.trim().isEmpty ? null : _horario.text.trim(),
+      'dias_semana':   horario['dias_semana'],
+      'hora_apertura': horario['hora_apertura'],
+      'hora_cierre':   horario['hora_cierre'],
       'activo': _activo,
     };
 
@@ -128,7 +193,7 @@ class _SucursalFormScreenState extends State<SucursalFormScreen> {
       if (_esEdicion) {
         await _repo.actualizar(widget.sucursal!.codigoSucursal, body);
       } else {
-        body['codigo_sucursal'] = _codigo.text.trim().toUpperCase();
+        // El codigo_sucursal lo genera el servidor; NO se manda en body.
         await _repo.crear(body);
       }
       if (!mounted) return;
@@ -178,13 +243,30 @@ class _SucursalFormScreenState extends State<SucursalFormScreen> {
             _SeccionTitulo(titulo: 'Datos básicos', tokens: tokens),
             const SizedBox(height: 12),
             if (!_esEdicion) ...[
-              TextFormField(
-                controller: _codigo,
-                enabled: !_guardando,
-                textCapitalization: TextCapitalization.characters,
-                decoration: _dec(label: 'Código', hint: 'Ej. SUC-001'),
-                validator: _valCodigo,
-                style: const TextStyle(fontFamily: 'monospace'),
+              // Aviso: el código se autogenera en el servidor.
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: tokens.surface,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: tokens.border),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.tag, size: 18, color: tokens.primary),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'El código se asignará automáticamente '
+                        '(SUC-001, SUC-002, ...)',
+                        style: TextStyle(
+                          color: tokens.textSecondary,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
               const SizedBox(height: 12),
             ],
@@ -195,21 +277,113 @@ class _SucursalFormScreenState extends State<SucursalFormScreen> {
               validator: _valNombre,
             ),
             const SizedBox(height: 12),
-            TextFormField(
-              controller: _horario,
-              enabled: !_guardando,
-              decoration: _dec(
-                label: 'Horario',
-                hint: 'L-V 9:00 a 17:00',
+
+            // ── Horario: días de apertura + hora 24h ──
+            Text(
+              'Horario',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                color: tokens.textSecondary,
               ),
             ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 6,
+              children: List.generate(7, (i) {
+                final dia = i + 1; // 1=L ... 7=D
+                final seleccionado = _diasSeleccionados.contains(dia);
+                return FilterChip(
+                  label: Text(_diasCorto[i]),
+                  selected: seleccionado,
+                  onSelected: _guardando
+                      ? null
+                      : (_) => setState(() {
+                            if (seleccionado) {
+                              _diasSeleccionados.remove(dia);
+                            } else {
+                              _diasSeleccionados.add(dia);
+                            }
+                          }),
+                  selectedColor: SantanderColors.red,
+                  checkmarkColor: Colors.white,
+                  labelStyle: TextStyle(
+                    color: seleccionado ? Colors.white : tokens.textPrimary,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                    side: BorderSide(
+                      color: seleccionado
+                          ? SantanderColors.red
+                          : tokens.border,
+                    ),
+                  ),
+                );
+              }),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _guardando
+                        ? null
+                        : () => _pickHora(context, true),
+                    icon: const Icon(Icons.schedule, size: 18),
+                    label: Text(
+                      _horaApertura == null
+                          ? 'Hora apertura'
+                          : 'Apertura: ${_fmtHhmm(_horaApertura!)}',
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      side: BorderSide(color: tokens.border),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _guardando
+                        ? null
+                        : () => _pickHora(context, false),
+                    icon: const Icon(Icons.schedule_outlined, size: 18),
+                    label: Text(
+                      _horaCierre == null
+                          ? 'Hora cierre'
+                          : 'Cierre: ${_fmtHhmm(_horaCierre!)}',
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      side: BorderSide(color: tokens.border),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            if (_diasSeleccionados.isNotEmpty &&
+                (_horaApertura == null || _horaCierre == null))
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(
+                  'Selecciona también la hora de apertura y cierre',
+                  style: TextStyle(
+                    color: tokens.error,
+                    fontSize: 12,
+                  ),
+                ),
+              ),
             const SizedBox(height: 12),
             TextFormField(
               controller: _telefono,
               enabled: !_guardando,
-              keyboardType: TextInputType.phone,
+              keyboardType: TextInputType.number,
               decoration: _dec(label: 'Teléfono', hint: '10 dígitos'),
               validator: _valTel,
+              inputFormatters: [
+                FilteringTextInputFormatter.digitsOnly,
+                LengthLimitingTextInputFormatter(10),
+              ],
             ),
             const SizedBox(height: 24),
             _SeccionTitulo(titulo: 'Dirección', tokens: tokens),
@@ -231,6 +405,14 @@ class _SucursalFormScreenState extends State<SucursalFormScreen> {
                     controller: _numero,
                     enabled: !_guardando,
                     decoration: _dec(label: 'Número', hint: '123'),
+                    inputFormatters: [
+                      // Permitimos dígitos, letras (ej. "123-A"),
+                      // guion, slash, y el simbolo de grado.
+                      FilteringTextInputFormatter.allow(
+                        RegExp(r'[0-9A-Za-z\-/° ]'),
+                      ),
+                      LengthLimitingTextInputFormatter(10),
+                    ],
                   ),
                 ),
               ],
@@ -253,10 +435,24 @@ class _SucursalFormScreenState extends State<SucursalFormScreen> {
                 ),
                 const SizedBox(width: 10),
                 Expanded(
-                  child: TextFormField(
-                    controller: _estado,
-                    enabled: !_guardando,
-                    decoration: _dec(label: 'Estado', hint: 'CDMX'),
+                  child: DropdownButtonFormField<String>(
+                    initialValue: kEstadosMexico.contains(_estado.text)
+                        ? _estado.text
+                        : null,
+                    decoration: _dec(label: 'Estado'),
+                    isExpanded: true,
+                    items: kEstadosMexico
+                        .map((e) => DropdownMenuItem(
+                              value: e,
+                              child: Text(
+                                e,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ))
+                        .toList(),
+                    onChanged: _guardando
+                        ? null
+                        : (v) => setState(() => _estado.text = v ?? ''),
                   ),
                 ),
               ],

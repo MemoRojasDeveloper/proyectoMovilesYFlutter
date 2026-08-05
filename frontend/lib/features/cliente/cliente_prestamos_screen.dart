@@ -26,6 +26,7 @@ class ClientePrestamosScreen extends StatefulWidget {
 class _ClientePrestamosScreenState extends State<ClientePrestamosScreen> {
   final _repo = ClienteRepository();
   List<Prestamo> _prestamos = [];
+  List<ClienteCuenta> _cuentas = [];
   bool _cargando = true;
   String? _error;
 
@@ -33,6 +34,7 @@ class _ClientePrestamosScreenState extends State<ClientePrestamosScreen> {
   void initState() {
     super.initState();
     _cargar();
+    _cargarCuentas();
   }
 
   Future<void> _cargar() async {
@@ -62,15 +64,76 @@ class _ClientePrestamosScreenState extends State<ClientePrestamosScreen> {
     }
   }
 
-  void _abrirSimulador() {
-    Navigator.of(context).push(
+  Future<void> _cargarCuentas() async {
+    try {
+      final resp = await _repo.obtenerCuentas(widget.user.curp ?? '');
+      if (!mounted) return;
+      setState(() {
+        _cuentas = resp.cuentas.where((c) => c.activo).toList();
+      });
+    } catch (_) {
+      // No es crítico; si falla, no mostramos selector de cuenta.
+    }
+  }
+
+  Future<void> _abrirSimulador({bool modoSolicitud = false}) async {
+    final cuentasParaSimulador =
+        modoSolicitud && _cuentas.isNotEmpty ? _cuentas : <ClienteCuenta>[];
+    await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => ClientePrestamoSimuladorScreen(
           curp: widget.user.curp ?? '',
-          onCreated: _cargar,
+          cuentas: cuentasParaSimulador,
+          onSolicitado: _cargar,
         ),
       ),
     );
+  }
+
+  Future<void> _cancelarSolicitud(Prestamo p) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Cancelar solicitud'),
+        content: Text(
+          '¿Seguro que querés cancelar la solicitud #${p.idPrestamo} '
+          'por \$${p.montoOtorgado.toStringAsFixed(2)}?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('No'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Sí, cancelar'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+
+    try {
+      await _repo.cancelarSolicitud(p.idPrestamo);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Solicitud cancelada'),
+          backgroundColor: Color(0xFF2E7D32),
+        ),
+      );
+      _cargar();
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message)),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('No se pudo cancelar: $e')),
+      );
+    }
   }
 
   @override
@@ -88,12 +151,30 @@ class _ClientePrestamosScreenState extends State<ClientePrestamosScreen> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _abrirSimulador,
-        backgroundColor: SantanderColors.red,
-        foregroundColor: Colors.white,
-        icon: const Icon(Icons.calculate_outlined),
-        label: const Text('Simular'),
+      floatingActionButton: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          FloatingActionButton.extended(
+            heroTag: 'fab-simular',
+            onPressed: () => _abrirSimulador(),
+            backgroundColor: Colors.white,
+            foregroundColor: SantanderColors.red,
+            icon: const Icon(Icons.calculate_outlined),
+            label: const Text('Simular'),
+          ),
+          const SizedBox(height: 10),
+          FloatingActionButton.extended(
+            heroTag: 'fab-solicitar',
+            onPressed: _cuentas.isEmpty
+                ? null
+                : () => _abrirSimulador(modoSolicitud: true),
+            backgroundColor: SantanderColors.red,
+            foregroundColor: Colors.white,
+            icon: const Icon(Icons.send),
+            label: const Text('Solicitar'),
+          ),
+        ],
       ),
       body: RefreshIndicator(
         onRefresh: _cargar,
@@ -183,6 +264,9 @@ class _ClientePrestamosScreenState extends State<ClientePrestamosScreen> {
           );
           _cargar();
         },
+        onCancelar: _prestamos[i].estado == 'pendiente'
+            ? () => _cancelarSolicitud(_prestamos[i])
+            : null,
       ),
     );
   }
@@ -194,17 +278,49 @@ class _PrestamoCard extends StatelessWidget {
     required this.tokens,
     required this.esOscuro,
     required this.onTap,
+    this.onCancelar,
   });
 
   final Prestamo prestamo;
   final AppColors tokens;
   final bool esOscuro;
   final VoidCallback onTap;
+  final VoidCallback? onCancelar;
 
   String get _fechaStr {
     if (prestamo.fechaAprobacion == null) return '—';
     final d = prestamo.fechaAprobacion!;
     return '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+  }
+
+  Color _colorEstado(AppColors tokens) {
+    switch (prestamo.estado) {
+      case 'aprobado':
+        return const Color(0xFF2E7D32);
+      case 'pendiente':
+        return const Color(0xFFEF6C00);
+      case 'rechazado':
+        return tokens.error;
+      case 'cancelado':
+        return tokens.textSecondary;
+      default:
+        return tokens.textPrimary;
+    }
+  }
+
+  String _etiquetaEstado() {
+    switch (prestamo.estado) {
+      case 'aprobado':
+        return 'Aprobado';
+      case 'pendiente':
+        return 'Pendiente';
+      case 'rechazado':
+        return 'Rechazado';
+      case 'cancelado':
+        return 'Cancelado';
+      default:
+        return prestamo.estado;
+    }
   }
 
   @override
@@ -237,21 +353,47 @@ class _PrestamoCard extends StatelessWidget {
                       ),
                     ),
                   ),
-                  Text(
-                    '${prestamo.tasaInteres.toStringAsFixed(1)}%',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: tokens.textSecondary,
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 3,
+                    ),
+                    decoration: BoxDecoration(
+                      color: _colorEstado(tokens).withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      _etiquetaEstado(),
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: _colorEstado(tokens),
+                      ),
                     ),
                   ),
                 ],
               ),
               const SizedBox(height: 6),
               Text(
-                'Aprobado: $_fechaStr · ${prestamo.plazoMeses} meses',
+                prestamo.estado == 'aprobado'
+                    ? 'Aprobado: $_fechaStr · ${prestamo.plazoMeses} meses'
+                    : 'Fecha: $_fechaStr · ${prestamo.plazoMeses} meses',
                 style: TextStyle(color: tokens.textSecondary, fontSize: 12),
               ),
+              if (prestamo.motivoSolicitud != null &&
+                  prestamo.motivoSolicitud!.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Text(
+                  'Motivo: ${prestamo.motivoSolicitud}',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: tokens.textSecondary,
+                    fontSize: 12,
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+              ],
               const SizedBox(height: 12),
               Row(
                 children: [
@@ -282,6 +424,50 @@ class _PrestamoCard extends StatelessWidget {
                   ),
                 ],
               ),
+              if (prestamo.estado == 'rechazado') ...[
+                const SizedBox(height: 10),
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: tokens.error.withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(Icons.cancel_outlined,
+                          color: tokens.error, size: 18),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          prestamo.estadoDetalle['motivo_rechazo']
+                                  ?.toString() ??
+                              'Sin motivo especificado',
+                          style: TextStyle(
+                            color: tokens.error,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              if (prestamo.estado == 'pendiente' && onCancelar != null) ...[
+                const SizedBox(height: 10),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton.icon(
+                    onPressed: onCancelar,
+                    icon: const Icon(Icons.close, size: 16),
+                    label: const Text('Cancelar solicitud'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: tokens.textSecondary,
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
         ),

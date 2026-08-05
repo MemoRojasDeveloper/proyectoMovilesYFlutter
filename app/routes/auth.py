@@ -43,6 +43,7 @@ PRIVILEGIOS_BASE_CLIENTE = (
     ("consultar_saldo", "Consultar el saldo y movimientos de la cuenta"),
     ("transferir", "Realizar transferencias a otras cuentas"),
     ("pagar_domiciliacion", "Pagar las domiciliaciones asociadas"),
+    ("solicitar_prestamo", "Solicitar préstamos a nombre del titular"),
     ("cerrar_cuenta", "Cerrar la cuenta"),
 )
 

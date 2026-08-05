@@ -361,7 +361,8 @@ class _SucursalDetalleScreenState extends State<SucursalDetalleScreen> {
                 campos: [
                   _Campo('Código', s.codigoSucursal, copy: true),
                   _Campo('Nombre', s.nombreSucursal),
-                  if (s.horario != null) _Campo('Horario', s.horario!),
+                  if (s.horarioLabel != null)
+                    _Campo('Horario', s.horarioLabel!),
                   if (s.telefono != null)
                     _Campo('Teléfono', s.telefono!, copy: true),
                 ],

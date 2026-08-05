@@ -25,6 +25,7 @@ class ClienteCuenta {
     this.nombreSucursal,
     this.ciudad,
     this.activoSucursal,
+    this.activo = true,
   });
 
   final String codigoCuenta;
@@ -34,6 +35,9 @@ class ClienteCuenta {
   final String? nombreSucursal;
   final String? ciudad;
   final bool? activoSucursal;
+
+  /// Estado de la cuenta (`cuenta_corriente.activo`).
+  final bool activo;
 
   factory ClienteCuenta.fromJson(Map<String, dynamic> json) {
     DateTime? parseDate(Object? v) {
@@ -55,6 +59,7 @@ class ClienteCuenta {
       nombreSucursal: json['nombre_sucursal'] as String?,
       ciudad: json['ciudad'] as String?,
       activoSucursal: json['activo_sucursal'] as bool?,
+      activo: json['activo'] as bool? ?? true,
     );
   }
 }
@@ -426,13 +431,18 @@ class Prestamo {
     required this.montoOtorgado,
     required this.tasaInteres,
     required this.plazoMeses,
+    this.curpSolicitante,
     this.fechaAprobacion,
     this.cuotaMensual,
     this.interesTotal,
     this.totalAPagar,
+    this.estado = 'aprobado',
+    this.motivoSolicitud,
+    this.estadoDetalle = const {},
   });
   final int idPrestamo;
   final String curp;
+  final String? curpSolicitante;
   final double montoOtorgado;
   final double tasaInteres;
   final int plazoMeses;
@@ -440,6 +450,11 @@ class Prestamo {
   final double? cuotaMensual;
   final double? interesTotal;
   final double? totalAPagar;
+
+  /// 'pendiente' | 'aprobado' | 'rechazado' | 'cancelado'
+  final String estado;
+  final String? motivoSolicitud;
+  final Map<String, dynamic> estadoDetalle;
 
   factory Prestamo.fromJson(Map<String, dynamic> json) {
     DateTime? parseDate(Object? v) {
@@ -460,9 +475,16 @@ class Prestamo {
       return null;
     }
 
+    final detalle = json['estado_detalle'];
+    Map<String, dynamic> detalleMap = const {};
+    if (detalle is Map<String, dynamic>) {
+      detalleMap = detalle;
+    }
+
     return Prestamo(
       idPrestamo: json['id_prestamo'] as int,
       curp: json['curp'] as String,
+      curpSolicitante: json['curp_solicitante'] as String?,
       montoOtorgado: parseMonto(json['monto_otorgado']),
       tasaInteres: parseMonto(json['tasa_interes']),
       plazoMeses: json['plazo_meses'] as int,
@@ -470,6 +492,9 @@ class Prestamo {
       cuotaMensual: parseOpt(json['cuota_mensual']),
       interesTotal: parseOpt(json['interes_total']),
       totalAPagar: parseOpt(json['total_a_pagar']),
+      estado: json['estado'] as String? ?? 'aprobado',
+      motivoSolicitud: json['motivo_solicitud'] as String?,
+      estadoDetalle: detalleMap,
     );
   }
 }
@@ -734,6 +759,63 @@ class ClienteRepository {
     return SimulacionPrestamo.fromJson(res);
   }
 
+  /// ──────────── Solicitud de préstamos (workflow nuevo) ────────────
+
+  /// Solicita un préstamo. Curp = titular de la cuenta.
+  /// El solicitante puede ser el titular o alguien con permiso 'solicitar_prestamo'.
+  Future<Prestamo> solicitarPrestamo({
+    required String curpTitular,
+    required String codigoCuenta,
+    required double monto,
+    required double tasa,
+    required int plazo,
+    required String motivo,
+  }) async {
+    final tok = await _token();
+    final res = await _api.post(
+      '/api/clientes/${curpTitular.toUpperCase()}/prestamos/solicitar',
+      body: {
+        'codigo_cuenta': codigoCuenta.toUpperCase(),
+        'monto_otorgado': monto,
+        'tasa_interes': tasa,
+        'plazo_meses': plazo,
+        'motivo_solicitud': motivo,
+      },
+      token: tok,
+    );
+    if (res is! Map<String, dynamic> || res['prestamo'] is! Map<String, dynamic>) {
+      throw ServerApiException();
+    }
+    return Prestamo.fromJson(res['prestamo'] as Map<String, dynamic>);
+  }
+
+  /// Cancela una solicitud pendiente (la que el usuario autenticado haya hecho).
+  Future<Prestamo> cancelarSolicitud(int idPrestamo, {String? motivo}) async {
+    final tok = await _token();
+    final res = await _api.patch(
+      '/api/prestamos/$idPrestamo/cancelar',
+      body: {'motivo': motivo ?? 'Cancelado por el usuario'},
+      token: tok,
+    );
+    if (res is! Map<String, dynamic> || res['prestamo'] is! Map<String, dynamic>) {
+      throw ServerApiException();
+    }
+    return Prestamo.fromJson(res['prestamo'] as Map<String, dynamic>);
+  }
+
+  /// Historial de eventos del préstamo.
+  Future<List<dynamic>> obtenerEventos(int idPrestamo) async {
+    final tok = await _token();
+    final res = await _api.get(
+      '/api/prestamos/$idPrestamo/eventos',
+      token: tok,
+    );
+    if (res is! Map<String, dynamic>) {
+      throw ServerApiException();
+    }
+    return (res['eventos'] as List? ?? const []);
+  }
+
   /// ──────────── Acceso compartido a cuenta ────────────
 
   /// Catálogo de privilegios que el frontend sabe manejar.
@@ -755,6 +837,11 @@ class ClienteRepository {
       nombre: 'pagar_domiciliacion',
       etiqueta: 'Pagar domiciliación',
       descripcion: 'Pagar las domiciliaciones asociadas',
+    ),
+    PrivilegioCatalogo(
+      nombre: 'solicitar_prestamo',
+      etiqueta: 'Solicitar préstamo',
+      descripcion: 'Pedir préstamos a nombre del titular (requiere aprobación)',
     ),
     PrivilegioCatalogo(
       nombre: 'cerrar_cuenta',

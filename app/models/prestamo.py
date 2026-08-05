@@ -3,6 +3,19 @@ from decimal import Decimal
 from ..extensions import db
 
 
+# Estados posibles de un prestamo segun el workflow.
+EST_PRESTAMO_PENDIENTE = "pendiente"
+EST_PRESTAMO_APROBADO = "aprobado"
+EST_PRESTAMO_RECHAZADO = "rechazado"
+EST_PRESTAMO_CANCELADO = "cancelado"
+ESTADOS_PRESTAMO = (
+    EST_PRESTAMO_PENDIENTE,
+    EST_PRESTAMO_APROBADO,
+    EST_PRESTAMO_RECHAZADO,
+    EST_PRESTAMO_CANCELADO,
+)
+
+
 class Prestamo(db.Model):
     __tablename__ = "prestamo"
 
@@ -17,16 +30,47 @@ class Prestamo(db.Model):
     plazo_meses = db.Column(db.Integer, nullable=False)
     fecha_aprobacion = db.Column(db.Date, nullable=False)
 
+    # Workflow: 'pendiente' -> 'aprobado'|'rechazado'|'cancelado'
+    estado = db.Column(
+        db.String(20),
+        nullable=False,
+        default=EST_PRESTAMO_APROBADO,
+        server_default=EST_PRESTAMO_APROBADO,
+    )
+
+    # Motivo / mensaje que dejo el solicitante
+    motivo_solicitud = db.Column(db.Text)
+
+    # Si lo solicita otro usuario con permiso, queda registrado
+    curp_solicitante = db.Column(
+        db.String(18),
+        db.ForeignKey("cliente.curp", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+    # Snapshot JSON con info del ultimo evento
+    # (motivo de aprob/rechazo, curp_empleado, etc.)
+    estado_detalle = db.Column(
+        db.JSON,
+        nullable=False,
+        default=dict,
+        server_default=db.text("'{}'::jsonb"),
+    )
+
     def to_dict(self) -> dict:
         return {
             "id_prestamo": self.id_prestamo,
             "curp": self.curp,
+            "curp_solicitante": self.curp_solicitante,
             "monto_otorgado": float(self.monto_otorgado),
             "tasa_interes": float(self.tasa_interes),
             "plazo_meses": self.plazo_meses,
             "fecha_aprobacion": self.fecha_aprobacion.strftime("%Y-%m-%d")
             if self.fecha_aprobacion
             else None,
+            "estado": self.estado,
+            "motivo_solicitud": self.motivo_solicitud,
+            "estado_detalle": self.estado_detalle or {},
         }
 
     def monto_cuota(self) -> Decimal:
@@ -49,6 +93,53 @@ class Prestamo(db.Model):
         return self.monto_cuota() * Decimal(str(self.plazo_meses)) - Decimal(
             str(self.monto_otorgado)
         )
+
+
+class PrestamoEvento(db.Model):
+    """Historial inmutable de eventos del workflow de un prestamo."""
+
+    __tablename__ = "prestamo_evento"
+
+    id_evento = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
+    id_prestamo = db.Column(
+        db.Integer,
+        db.ForeignKey("prestamo.id_prestamo", ondelete="CASCADE"),
+        nullable=False,
+    )
+    tipo = db.Column(db.String(30), nullable=False)
+    curp_actor = db.Column(
+        db.String(18),
+        db.ForeignKey("cliente.curp", ondelete="SET NULL"),
+        nullable=True,
+    )
+    estado_anterior = db.Column(db.String(20))
+    estado_nuevo = db.Column(db.String(20))
+    motivo = db.Column(db.Text)
+    metadata_json = db.Column(
+        "metadata",
+        db.JSON,
+        nullable=False,
+        default=dict,
+        server_default=db.text("'{}'::jsonb"),
+    )
+    fecha = db.Column(
+        db.DateTime(timezone=True),
+        nullable=False,
+        server_default=db.func.current_timestamp(),
+    )
+
+    def to_dict(self) -> dict:
+        return {
+            "id_evento": self.id_evento,
+            "id_prestamo": self.id_prestamo,
+            "tipo": self.tipo,
+            "curp_actor": self.curp_actor,
+            "estado_anterior": self.estado_anterior,
+            "estado_nuevo": self.estado_nuevo,
+            "motivo": self.motivo,
+            "metadata": self.metadata_json,
+            "fecha": self.fecha.isoformat() if self.fecha else None,
+        }
 
 
 class CuotaPrestamo(db.Model):

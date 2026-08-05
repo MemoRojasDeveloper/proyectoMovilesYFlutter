@@ -19,7 +19,9 @@ class Sucursal {
     this.estado,
     this.codigoPostal,
     this.telefono,
-    this.horario,
+    this.diasSemana,
+    this.horaApertura,
+    this.horaCierre,
     this.activo = true,
     this.creadoEn,
     this.actualizadoEn,
@@ -34,10 +36,34 @@ class Sucursal {
   final String? estado;
   final String? codigoPostal;
   final String? telefono;
-  final String? horario;
+
+  /// Días de apertura como enteros 1..7 (1=Lun ... 7=Dom).
+  /// Null si la sucursal no tiene horario configurado.
+  final List<int>? diasSemana;
+
+  /// Hora de apertura en formato "HH:MM" (24h).
+  final String? horaApertura;
+
+  /// Hora de cierre en formato "HH:MM" (24h).
+  final String? horaCierre;
+
   final bool activo;
   final DateTime? creadoEn;
   final DateTime? actualizadoEn;
+
+  /// Etiqueta humana del horario, p.ej. "L-V 09:00–18:00" o "L,M,V 09:00–18:00".
+  /// Null si no hay horario.
+  String? get horarioLabel {
+    if (diasSemana == null || diasSemana!.isEmpty) return null;
+    if (horaApertura == null || horaCierre == null) return null;
+    const diasCorto = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
+    final sorted = [...diasSemana!]..sort();
+    final rango = sorted.length > 1 &&
+            sorted.last - sorted.first == sorted.length - 1
+        ? '${diasCorto[sorted.first - 1]}-${diasCorto[sorted.last - 1]}'
+        : sorted.map((d) => diasCorto[d - 1]).join(',');
+    return '$rango $horaApertura–$horaCierre';
+  }
 
   String get direccionCorta {
     final partes = <String>[];
@@ -63,6 +89,16 @@ class Sucursal {
       return null;
     }
 
+    List<int>? parseDias(Object? v) {
+      if (v is List) {
+        return v
+            .whereType<num>()
+            .map((n) => n.toInt())
+            .toList(growable: false);
+      }
+      return null;
+    }
+
     return Sucursal(
       codigoSucursal: json['codigo_sucursal'] as String,
       nombreSucursal: json['nombre_sucursal'] as String,
@@ -73,7 +109,9 @@ class Sucursal {
       estado: json['estado'] as String?,
       codigoPostal: json['codigo_postal'] as String?,
       telefono: json['telefono'] as String?,
-      horario: json['horario'] as String?,
+      diasSemana: parseDias(json['dias_semana']),
+      horaApertura: json['hora_apertura'] as String?,
+      horaCierre: json['hora_cierre'] as String?,
       activo: json['activo'] as bool? ?? true,
       creadoEn: parseDate(json['creado_en']),
       actualizadoEn: parseDate(json['actualizado_en']),
