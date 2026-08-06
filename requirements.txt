@@ -1,23 +1,80 @@
-blinker==1.9.0
-certifi==2026.6.17
-charset-normalizer==3.4.7
-click==8.4.2
-colorama==0.4.6
+# ──────────────────────────────────────────────────────────────────────
+# Banco Santander — Backend Flask
+# ──────────────────────────────────────────────────────────────────────
+# Stack: Flask 3.1 + SQLAlchemy 2.0 + JWT + Stripe + pg8000 (Supabase)
+# Python soportado: 3.12 / 3.13 / 3.14
+# Driver de BD: pg8000 (puro Python, unico compatible con 3.13+ en este stack)
+# ──────────────────────────────────────────────────────────────────────
+
+# Web framework + extensiones
 Flask==3.1.3
+Flask-Cors==5.0.0
+Flask-JWT-Extended==4.7.1
 Flask-SQLAlchemy==3.1.1
-greenlet==3.5.3
-idna==3.18
+
+# ORM y driver Postgres
+SQLAlchemy==2.0.51
+pg8000==1.31.5
+
+# Auth
+bcrypt==4.3.0
+PyJWT==2.13.0
+
+# Pagos
+stripe==15.3.0
+requests==2.34.2
+
+# Config / utilidades
+python-dotenv==1.2.2
+python-dateutil==2.9.0.post0
+
+# ──────────────────────────────────────────────────────────────────────
+# Tests
+# ──────────────────────────────────────────────────────────────────────
+# pytest + coverage + extensiones usadas en tests/
+pytest==8.4.2
+pytest-cov==7.0.0
+pytest-flask==1.3.0
+pytest-mock==3.14.1
+coverage==7.15.2
+iniconfig==2.3.0
+pluggy==1.6.0
+packaging==26.2
+
+# ──────────────────────────────────────────────────────────────────────
+# Dependencias transitivas (fijadas para builds reproducibles)
+# ──────────────────────────────────────────────────────────────────────
+click==8.4.2
 itsdangerous==2.2.0
 Jinja2==3.1.6
 MarkupSafe==3.0.3
-PyMySQL==1.2.0
-python-dotenv==1.2.2
-requests==2.34.2
-SQLAlchemy==2.0.51
-stripe==15.3.0
+Werkzeug==3.1.8
+blinker==1.9.0
+certifi==2026.6.17
+charset-normalizer==3.4.7
+colorama==0.4.6
+greenlet==3.5.3
+idna==3.18
+scramp==1.4.15
+six==1.17.0
 typing_extensions==4.16.0
 urllib3==2.7.0
-Werkzeug==3.1.8
+Pygments==2.20.0
+asn1crypto==1.5.1
+PyMySQL==1.2.0
 
-#crea tu entonrno virtual con python -m venv venv y luego activa el entorno virtual con venv\Scripts\activate
-#instala todas las dependencias con pip install -r requirements.txt
+# ──────────────────────────────────────────────────────────────────────
+# NOTAS de instalación
+# ──────────────────────────────────────────────────────────────────────
+# Python 3.13/3.14:
+#   pg8000 es el driver RECOMENDADO (puro Python, sin compilacion).
+#   NO usar psycopg2/psycopg2-binary sin tener pg_config en PATH.
+#
+# Python 3.12:
+#   Puedes usar psycopg2-binary si quieres, pero pg8000 ya esta aqui.
+#
+# Antes este archivo listaba psycopg2-binary con marcador PEP 508 para
+# Python <3.13. Se elimino: pg8000 cubre todos los casos soportados.
+#
+# PyMySQL se mantiene por si en algun momento agregas MySQL local;
+# NO es necesario para Supabase.
