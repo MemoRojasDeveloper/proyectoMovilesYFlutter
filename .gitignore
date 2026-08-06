@@ -142,3 +142,4 @@ backend/build/
 #    permitidas por defecto; este archivo solo añade exclusiones.
 #  - Si añades nuevas herramientas (linters, formatters), agrégalas aquí.
 # ============================================================================
+frontend/android/.kotlin/sessions/kotlin-compiler-2633953582808486.salive
