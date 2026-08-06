@@ -61,7 +61,7 @@ Desktop.ini
 ehthumbs.db
 $RECYCLE.BIN/
 
-# ─── IDEs y editores 
+# IDEs y editores 
 .vscode/
 .idea/
 *.swp
