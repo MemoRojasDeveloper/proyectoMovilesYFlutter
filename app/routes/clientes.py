@@ -1,8 +1,4 @@
 """CRUD de clientes contra `public.cliente` en Supabase.
-
-La creación se hace desde `POST /api/auth/register` (que valida y
-hashea el password). Este blueprint solo expone consultas y
-actualizaciones sobre clientes ya registrados.
 """
 from __future__ import annotations
 
@@ -59,8 +55,7 @@ def buscar_por_email():
 
 # GET /api/clientes/<curp>/cuentas
 # Lista las cuentas corrientes asociadas al cliente (vía tabla de privilegios).
-# Si el caller es 'cliente', solo puede ver SUS cuentas (curp del JWT == path).
-# Si el caller es 'empleado', puede ver las de cualquier cliente.
+
 @bp.route("/clientes/<string:curp>/cuentas", methods=["GET"])
 @require_auth()
 def listar_cuentas_cliente(curp: str):

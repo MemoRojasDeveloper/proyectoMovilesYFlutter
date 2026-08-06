@@ -61,7 +61,7 @@ TASA_MIN = Decimal("9.0")
 TASA_MAX = Decimal("18.0")
 
 
-# ── Helpers locales ────────────────────────────────────────────────────────────
+# Helpers locales 
 
 def _usuario_tiene_permiso_prestamo(curp_usuario: str, codigo_cuenta: str) -> bool:
     """True si el curp_usuario tiene el privilegio 'solicitar_prestamo'
@@ -218,9 +218,6 @@ def _calcular_cuota_y_total(monto: Decimal, tasa: Decimal, plazo: int):
 
 
 # POST /api/prestamos/simular
-# body: {monto, tasa_interes, plazo_meses}
-# Devuelve cuota mensual + interes total + tabla de amortizacion.
-# No requiere auth: cualquier cliente puede simular antes de contratar.
 @bp.route("/prestamos/simular", methods=["POST"])
 def simular_prestamo():
     data = request.get_json(silent=True) or {}
@@ -327,13 +324,7 @@ def crear_prestamo(curp: str):
 
 
 # POST /api/clientes/<curp>/prestamos/solicitar
-# Solicitud de prestamo (workflow nuevo).
-# Roles permitidos:
-#   - Cliente autenticado pide para SI MISMO (curp == curp_jwt)
-#   - Cliente con permiso 'solicitar_prestamo' sobre la cuenta indicada
-# Reglas:
-#   - 1 solicitud Pendiente o prestamo Aprobado por mes natural por cliente titular
-#   - codigo_cuenta obligatorio (debe existir y estar activa)
+# Solicitud de prestamo
 @bp.route("/clientes/<string:curp>/prestamos/solicitar", methods=["POST"])
 @require_auth()
 def solicitar_prestamo(curp: str):

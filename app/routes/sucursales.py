@@ -23,14 +23,14 @@ from ..utils import require_auth
 bp = Blueprint("sucursales", __name__)
 
 
-# ── Validadores locales (mantienen una sola fuente de verdad) ─────
+# Validadores locales 
 CP_RE = re.compile(r"^[0-9]{5}$")
 TEL_RE = re.compile(r"^[0-9]{10}$")
 # codigo_sucursal lo genera la DB: 'SUC-001', 'SUC-002', ...
 CODIGO_RE = re.compile(r"^SUC-[0-9]{3,}$")
 HHMM_RE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 
-# Limites por columna (alineados con la migración DB).
+# Limites por columna
 MAX_LEN = {
     "nombre_sucursal": 100,
     "calle": 120,
@@ -112,7 +112,7 @@ def _validar_payload(data: dict, *, es_creacion: bool) -> tuple[dict, dict | Non
     """
     errores = {}
 
-    # codigo_sucursal: SOLO lo validamos si llega en el body (caso raro).
+    # codigo_sucursal: SOLO lo valida si llega en el body (caso raro).
     codigo = (data.get("codigo_sucursal") or "").strip().upper()
     if codigo and not CODIGO_RE.match(codigo):
         errores["codigo_sucursal"] = (
@@ -143,13 +143,13 @@ def _validar_payload(data: dict, *, es_creacion: bool) -> tuple[dict, dict | Non
     if activo is not None and not isinstance(activo, bool):
         errores["activo"] = "activo debe ser booleano"
 
-    # ── Horario normalizado ──
+    # Horario normalizado 
     horario_norm, horario_err = _validar_horario(data)
     if horario_err:
         # Asignamos el error al campo mas probable segun el mensaje
         errores["horario"] = horario_err
 
-    # ── Lectura de los varchar libres y validación de longitud ──
+    # Lectura de los varchar libres y validación de longitud ──
     campos_libres = ("calle", "numero", "colonia", "ciudad", "estado")
     normalizado = {
         "nombre_sucursal": nombre,
@@ -183,12 +183,9 @@ def _validar_payload(data: dict, *, es_creacion: bool) -> tuple[dict, dict | Non
     return normalizado, errores or None
 
 
-# ── Endpoints ──────────────────────────────────────────────────────
+# Endpoints
 
 # GET /api/sucursales   GET /api/sucursales?activo=true|false
-#
-# Lectura publica: cualquiera (incluso antes del login) puede listar
-# las sucursales activas para escoger una al registrarse. Si quieres
 # ver TODAS (incluyendo inactivas), la llamada debe llevar JWT.
 @bp.route("/sucursales", methods=["GET"])
 def listar_sucursales():
@@ -266,10 +263,6 @@ def obtener_sucursal(codigo: str):
 
 # GET /api/sucursales/<codigo>/cuentas
 # Lista las cuentas corrientes asociadas a esta sucursal
-# (para mostrar en el dashboard de detalle).
-# Tambien incluye, para cada cuenta, el listado resumido de
-# domiciliaciones activas (para que el empleado pueda ver y dar
-# de baja).
 @bp.route("/sucursales/<string:codigo>/cuentas", methods=["GET"])
 @require_auth()
 def listar_cuentas_sucursal(codigo: str):

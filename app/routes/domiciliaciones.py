@@ -34,8 +34,7 @@ def _parse_decimal(value):
 
 
 # GET /api/catalogo-servicios?tipo=internet
-# Lista los proveedores del catalogo (activos por defecto).
-# Es publico: el cliente lo necesita para ver que puede domiciliar.
+
 @bp.route("/catalogo-servicios", methods=["GET"])
 def listar_catalogo_servicios():
     tipo = request.args.get("tipo")
@@ -57,13 +56,6 @@ def listar_catalogo_servicios():
 
 # POST /api/domiciliaciones
 # Body: { codigo_cuenta, id_catalogo_servicio }
-# El cliente domicilia un servicio del catalogo contra su cuenta.
-# Reglas:
-#   - La cuenta debe existir y estar activa.
-#   - El cliente debe tener acceso a la cuenta (cliente_cuenta_privilegio).
-#   - El servicio del catalogo debe existir y estar activo.
-#   - No puede haber OTRA domiciliacion ACTIVA del mismo servicio en
-#     la misma cuenta (UNIQUE logico).
 @bp.route("/domiciliaciones", methods=["POST"])
 @require_auth(roles=("cliente", "empleado"))
 def crear_domiciliacion():
@@ -180,7 +172,6 @@ def dar_baja_domiciliacion(id_domiciliacion: int):
 
 
 # Compatibilidad: GET /api/domiciliaciones sigue devolviendo todas
-# (comportamiento original del blueprint, util para admin).
 @bp.route("/domiciliaciones", methods=["GET"])
 def gestionar_domiciliaciones():
     domiciliaciones = Domiciliacion.query.all()

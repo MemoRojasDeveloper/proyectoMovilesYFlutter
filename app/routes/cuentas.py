@@ -235,9 +235,6 @@ def listar_domiciliaciones_cuenta(codigo: str):
 
 # GET /api/cuentas/<codigo>/movimientos?limite=20&offset=0
 # Historial paginado de una cuenta. Ordenado por fecha DESC.
-# Permisos:
-#   - Empleado: ve todo.
-#   - Cliente: solo si tiene acceso (cliente_cuenta_privilegio).
 @bp.route("/cuentas/<string:codigo>/movimientos", methods=["GET"])
 def listar_movimientos_cuenta(codigo: str):
     from ..utils.auth import require_auth as _ra

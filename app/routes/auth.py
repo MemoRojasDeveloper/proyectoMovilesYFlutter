@@ -1,13 +1,4 @@
 """Blueprint de autenticación: register, login y me.
-
-Opera UNICAMENTE sobre `public.cliente` en Supabase. No existe tabla
-`usuario` separada; el hash de password vive dentro de `cliente`.
-
-`POST /api/auth/register` crea en una sola transaccion:
-  - 1 fila en public.cliente (identidad + password_hash)
-  - 1 fila en public.cuenta_corriente (codigo_cuenta derivado de la CURP)
-  - N filas en public.cliente_cuenta_privilegio (privilegios base:
-    consultar_saldo, transferir, pagar_domiciliacion, cerrar_cuenta)
 """
 from __future__ import annotations
 
@@ -34,11 +25,11 @@ from ..utils.validation import (
     validar_password,
 )
 
-bp = Blueprint("auth", __name__, url_prefix="/api/auth")
+
+bp = Blueprint("auth", __name__)
 
 
 # Privilegios que TODO cliente nuevo recibe al registrarse sobre
-# SU cuenta recien creada.
 PRIVILEGIOS_BASE_CLIENTE = (
     ("consultar_saldo", "Consultar el saldo y movimientos de la cuenta"),
     ("transferir", "Realizar transferencias a otras cuentas"),
@@ -72,7 +63,7 @@ def _asegurar_privilegios_base() -> dict[str, int]:
 def _asignar_privilegios(curp: str, codigo_cuenta: str, ids: dict[str, int]) -> None:
     """Inserta una fila en `cliente_cuenta_privilegio` por cada privilegio.
 
-    Inserta solo si no existe ya (idempotente).
+    Inserta solo si no existe.
     """
     for id_priv in ids.values():
         existe = (
@@ -95,19 +86,12 @@ def _asignar_privilegios(curp: str, codigo_cuenta: str, ids: dict[str, int]) -> 
 def _generar_codigo_cuenta(curp: str, codigo_sucursal: str) -> str:
     """Codigo estable y unico: CTA-{curp[:6]}-{codigo_sucursal}.
 
-    6 chars de la CURP bastan para unicidad practica en el sistema
-    real; lo importante es que es DERIVADO (no requiere secuencia).
     """
     curp6 = curp[:6].upper()
     suc = codigo_sucursal.upper()
     return f"CTA-{curp6}-{suc}"
 
 
-# ─────────────────────────────────────────────────────────────────
-# POST /api/auth/register
-#   Crea un Cliente nuevo (con password_hash embebido) en una sola
-#   operacion atomica contra Supabase.
-# ─────────────────────────────────────────────────────────────────
 @bp.route("/register", methods=["POST"])
 def register():
     data = request.get_json(silent=True) or {}
@@ -210,7 +194,7 @@ def register():
         )
         db.session.add(cuenta)
 
-        # Crear / reutilizar los 4 privilegios base y asignarlos al
+    
         # cliente sobre SU nueva cuenta (todo en la misma transaccion).
         ids_privilegios = _asegurar_privilegios_base()
         _asignar_privilegios(curp, codigo_cuenta, ids_privilegios)
@@ -235,10 +219,7 @@ def register():
     )
 
 
-# ─────────────────────────────────────────────────────────────────
-# POST /api/auth/login
-#   Autentica por email + password contra public.cliente en Supabase.
-# ─────────────────────────────────────────────────────────────────
+
 @bp.route("/login", methods=["POST"])
 def login():
     data = request.get_json(silent=True) or {}
@@ -282,11 +263,8 @@ def login():
         200,
     )
 
-
-# ─────────────────────────────────────────────────────────────────
-# GET /api/auth/me
 #   Devuelve el perfil del cliente identificado por el token JWT.
-# ─────────────────────────────────────────────────────────────────
+
 @bp.route("/me", methods=["GET"])
 @require_auth()
 def me():
